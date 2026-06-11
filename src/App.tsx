@@ -181,6 +181,15 @@ function getProductNameKey(value: string): string {
   return normalizeText(value).replace(/[^a-z0-9]/g, "");
 }
 
+function sortProductsByName(productList: Product[]): Product[] {
+  return [...productList].sort((first, second) =>
+    first.nome.localeCompare(second.nome, "pt-BR", {
+      numeric: true,
+      sensitivity: "base",
+    }),
+  );
+}
+
 function usePersistentState<T>(key: string, initialValue: T) {
   const [value, setValue] = useState<T>(() => {
     try {
@@ -289,7 +298,10 @@ function App() {
     () => activeClients.filter((client) => getRouteFallback(client.routeId) === selectedRouteId),
     [activeClients, selectedRouteId],
   );
-  const activeProducts = useMemo(() => products.filter((product) => product.ativo), [products]);
+  const activeProducts = useMemo(
+    () => sortProductsByName(products.filter((product) => product.ativo)),
+    [products],
+  );
 
   const selectedRoute = useMemo(
     () => routes.find((route) => route.id === selectedRouteId) ?? routes[0],
@@ -430,7 +442,7 @@ function App() {
 
   const filteredCatalogProducts = useMemo(() => {
     const search = normalizeText(productCatalogSearch);
-    return products.filter((product) => normalizeText(product.nome).includes(search));
+    return sortProductsByName(products.filter((product) => normalizeText(product.nome).includes(search)));
   }, [products, productCatalogSearch]);
 
   const duplicateProduct = useMemo(() => {
@@ -801,14 +813,16 @@ function App() {
 
     if (editingProductId) {
       setProducts((current) =>
-        current.map((product) =>
-          product.id === editingProductId
-            ? {
-                ...product,
-                nome: productName,
-                unidadePadrao: productForm.unidadePadrao,
-              }
-            : product,
+        sortProductsByName(
+          current.map((product) =>
+            product.id === editingProductId
+              ? {
+                  ...product,
+                  nome: productName,
+                  unidadePadrao: productForm.unidadePadrao,
+                }
+              : product,
+          ),
         ),
       );
       setOrders((current) =>
@@ -830,7 +844,7 @@ function App() {
       ativo: true,
     };
 
-    setProducts((current) => [product, ...current]);
+    setProducts((current) => sortProductsByName([...current, product]));
     setSelectedProductId(product.id);
     resetProductForm();
   }
@@ -848,11 +862,7 @@ function App() {
       ativo: true,
     }));
 
-    setProducts((current) =>
-      [...current, ...productsToAdd].sort((first, second) =>
-        first.nome.localeCompare(second.nome, "pt-BR"),
-      ),
-    );
+    setProducts((current) => sortProductsByName([...current, ...productsToAdd]));
     setSelectedProductId(productsToAdd[0]?.id ?? selectedProductId);
     setCatalogMessage(`${productsToAdd.length} produtos adicionados.`);
   }
@@ -933,7 +943,7 @@ function App() {
         });
         setRoutes(payload.routes);
         setClients(payload.clients);
-        setProducts(payload.products);
+        setProducts(sortProductsByName(payload.products));
         setOrders(payload.orders);
         setCheckedItems(payload.checkedItems ?? {});
         setSelectedRouteId(payload.routes.find((route) => route.ativo)?.id ?? DEFAULT_ROUTE_ID);
