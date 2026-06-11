@@ -191,6 +191,15 @@ function sortProductsByName(productList: Product[]): Product[] {
   );
 }
 
+function sortClientsByName(clientList: Client[]): Client[] {
+  return [...clientList].sort((first, second) =>
+    first.nome.localeCompare(second.nome, "pt-BR", {
+      numeric: true,
+      sensitivity: "base",
+    }),
+  );
+}
+
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -375,7 +384,10 @@ function App() {
   const logoSrc = DEFAULT_LOGO_SRC;
 
   const activeRoutes = useMemo(() => routes.filter((route) => route.ativo), [routes]);
-  const activeClients = useMemo(() => clients.filter((client) => client.ativo), [clients]);
+  const activeClients = useMemo(
+    () => sortClientsByName(clients.filter((client) => client.ativo)),
+    [clients],
+  );
   const activeClientsForSelectedRoute = useMemo(
     () => activeClients.filter((client) => getRouteFallback(client.routeId) === selectedRouteId),
     [activeClients, selectedRouteId],
@@ -513,12 +525,14 @@ function App() {
 
   const filteredClients = useMemo(() => {
     const search = normalizeText(clientSearch);
-    return clients.filter(
-      (client) =>
-        getRouteFallback(client.routeId) === selectedRouteId &&
-        [client.nome, client.telefone, client.endereco].some((field) =>
-          normalizeText(field).includes(search),
-        ),
+    return sortClientsByName(
+      clients.filter(
+        (client) =>
+          getRouteFallback(client.routeId) === selectedRouteId &&
+          [client.nome, client.telefone, client.endereco].some((field) =>
+            normalizeText(field).includes(search),
+          ),
+      ),
     );
   }, [clients, clientSearch, selectedRouteId]);
 
@@ -784,17 +798,19 @@ function App() {
 
     if (editingClientId) {
       setClients((current) =>
-        current.map((client) =>
-          client.id === editingClientId
-            ? {
-                ...client,
-                nome: clientForm.nome.trim(),
-                telefone: clientForm.telefone.trim(),
-                endereco: clientForm.endereco.trim(),
-                observacaoPadrao: clientForm.observacaoPadrao.trim(),
-                routeId: clientRouteId,
-              }
-            : client,
+        sortClientsByName(
+          current.map((client) =>
+            client.id === editingClientId
+              ? {
+                  ...client,
+                  nome: clientForm.nome.trim(),
+                  telefone: clientForm.telefone.trim(),
+                  endereco: clientForm.endereco.trim(),
+                  observacaoPadrao: clientForm.observacaoPadrao.trim(),
+                  routeId: clientRouteId,
+                }
+              : client,
+          ),
         ),
       );
       setSelectedRouteId(clientRouteId);
@@ -812,7 +828,7 @@ function App() {
       ativo: true,
     };
 
-    setClients((current) => [client, ...current]);
+    setClients((current) => sortClientsByName([...current, client]));
     setSelectedRouteId(clientRouteId);
     setOrderClientId(client.id);
     resetClientForm(clientRouteId);
@@ -959,13 +975,17 @@ function App() {
 
   function toggleClientStatus(clientId: string) {
     setClients((current) =>
-      current.map((client) => (client.id === clientId ? { ...client, ativo: !client.ativo } : client)),
+      sortClientsByName(
+        current.map((client) => (client.id === clientId ? { ...client, ativo: !client.ativo } : client)),
+      ),
     );
   }
 
   function updateClientRoute(clientId: string, routeId: string) {
     setClients((current) =>
-      current.map((client) => (client.id === clientId ? { ...client, routeId } : client)),
+      sortClientsByName(
+        current.map((client) => (client.id === clientId ? { ...client, routeId } : client)),
+      ),
     );
   }
 
@@ -1019,7 +1039,7 @@ function App() {
           companyName: payload.settings?.companyName ?? initialSettings.companyName,
         });
         setRoutes(payload.routes);
-        setClients(payload.clients);
+        setClients(sortClientsByName(payload.clients));
         setProducts(sortProductsByName(payload.products));
         setOrders(payload.orders);
         setCheckedItems(payload.checkedItems ?? {});
