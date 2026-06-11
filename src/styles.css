@@ -5,6 +5,7 @@
 html {
   width: 100%;
   overflow-x: hidden;
+  overscroll-behavior-x: none;
 }
 
 :root {
@@ -94,6 +95,8 @@ body {
   margin: 0;
   background: var(--app-bg);
   overflow-x: hidden;
+  overscroll-behavior-x: none;
+  touch-action: pan-y pinch-zoom;
 }
 
 button,
@@ -121,6 +124,7 @@ button:disabled {
   max-width: 1120px;
   margin: 0 auto;
   background: var(--shell-bg);
+  overscroll-behavior-x: none;
 }
 
 .topbar {

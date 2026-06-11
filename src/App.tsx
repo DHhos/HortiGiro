@@ -110,6 +110,7 @@ const DEFAULT_LOGO_SRC = "/hortigiro-mark.png";
 const FIXED_APP_NAME = initialSettings.appName;
 const FIXED_PRIMARY_COLOR = initialSettings.primaryColor;
 const FIXED_PDF_FOOTER = initialSettings.pdfFooter;
+const TEMP_DOWNLOAD_URL_TTL = 10 * 60 * 1000;
 
 const emptyClientForm: ClientForm = {
   nome: "",
@@ -190,6 +191,85 @@ function sortProductsByName(productList: Product[]): Product[] {
   );
 }
 
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  window.setTimeout(() => URL.revokeObjectURL(url), TEMP_DOWNLOAD_URL_TTL);
+}
+
+function useAppNavigationGuard() {
+  useEffect(() => {
+    const guardState = { hortigiroGuard: true };
+    let touchStartX = 0;
+    let touchStartY = 0;
+
+    function pushGuardState() {
+      window.history.pushState(guardState, "", window.location.href);
+    }
+
+    window.history.replaceState(guardState, "", window.location.href);
+    pushGuardState();
+
+    function handlePopState() {
+      pushGuardState();
+    }
+
+    function handlePageShow(event: PageTransitionEvent) {
+      if (event.persisted) {
+        pushGuardState();
+      }
+    }
+
+    function handleTouchStart(event: TouchEvent) {
+      const touch = event.touches[0];
+
+      if (!touch) {
+        return;
+      }
+
+      touchStartX = touch.clientX;
+      touchStartY = touch.clientY;
+    }
+
+    function handleTouchMove(event: TouchEvent) {
+      const touch = event.touches[0];
+
+      if (!touch) {
+        return;
+      }
+
+      const deltaX = touch.clientX - touchStartX;
+      const deltaY = touch.clientY - touchStartY;
+      const startedNearEdge = touchStartX < 32 || touchStartX > window.innerWidth - 32;
+      const isHorizontalSwipe = Math.abs(deltaX) > 18 && Math.abs(deltaX) > Math.abs(deltaY) * 1.25;
+
+      if (startedNearEdge && isHorizontalSwipe) {
+        event.preventDefault();
+      }
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    window.addEventListener("pageshow", handlePageShow);
+    document.addEventListener("touchstart", handleTouchStart, { passive: true });
+    document.addEventListener("touchmove", handleTouchMove, { passive: false });
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener("pageshow", handlePageShow);
+      document.removeEventListener("touchstart", handleTouchStart);
+      document.removeEventListener("touchmove", handleTouchMove);
+    };
+  }, []);
+}
+
 function usePersistentState<T>(key: string, initialValue: T) {
   const [value, setValue] = useState<T>(() => {
     try {
@@ -250,6 +330,8 @@ function buildConsolidatedItems(orders: Order[]): ConsolidatedItem[] {
 }
 
 function App() {
+  useAppNavigationGuard();
+
   const [settings, setSettings] = usePersistentState<AppSettings>("hortigiro.settings", initialSettings);
   const [routes, setRoutes] = usePersistentState<Route[]>("hortigiro.routes", initialRoutes);
   const [clients, setClients] = usePersistentState<Client[]>("hortigiro.clients", initialClients);
@@ -906,13 +988,8 @@ function App() {
       checkedItems,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
 
-    link.href = url;
-    link.download = `hortigiro-backup-${toDateInputValue(new Date())}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `hortigiro-backup-${toDateInputValue(new Date())}.json`);
     setBackupMessage("Backup exportado.");
   }
 
@@ -1150,12 +1227,7 @@ function App() {
       }
     }
 
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, filename);
   }
 
   function getDeliveryOrdersByClient(routeId: string) {
@@ -1346,13 +1418,8 @@ function App() {
     const routeNameValue = routes.find((route) => route.id === routeId)?.nome ?? "rota";
     const routeSlug = normalizeText(routeNameValue).replace(/[^a-z0-9]+/g, "-");
     const blob = await makeDeliveryPdfBlob(routeId);
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
 
-    link.href = url;
-    link.download = `entrega-${routeSlug}-${selectedDeliveryDate}.pdf`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `entrega-${routeSlug}-${selectedDeliveryDate}.pdf`);
   }
 
   function renderDeliveryPicker(
