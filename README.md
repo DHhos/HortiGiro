@@ -4,7 +4,7 @@ PWA para registrar pedidos de hortifruti por cliente, organizar entregas por rot
 
 ## Estado atual
 
-O projeto esta em fase de MVP local/offline. As principais funcoes ja foram validadas no celular:
+O projeto esta em fase de MVP piloto. As principais funcoes ja foram validadas no celular, incluindo instalacao PWA em HTTPS e uso offline:
 
 - lancamento rapido de pedidos por cliente;
 - data de entrega pre-selecionada para o dia seguinte;
@@ -19,6 +19,7 @@ O projeto esta em fase de MVP local/offline. As principais funcoes ja foram vali
 - backup/importacao local em JSON;
 - tema escuro;
 - PWA instalavel.
+- funcionamento offline validado em HTTPS/Vercel.
 
 ## Tecnologias
 
@@ -91,7 +92,7 @@ O nome do app, a cor principal, a logo e o rodape do PDF ficam fixos para manter
 
 ## Offline/PWA
 
-Para testar offline de forma real, o app precisa estar em HTTPS. Em rede local `http://192.168...`, o navegador pode nao ativar Service Worker como faria em producao.
+O teste offline real ja foi validado em HTTPS. Em rede local `http://192.168...`, o navegador pode nao ativar Service Worker como faria em producao.
 
 Fluxo recomendado de teste offline:
 
@@ -116,15 +117,22 @@ Atualmente os dados ficam no navegador do aparelho:
 
 Antes de limpar navegador, trocar aparelho ou reinstalar o PWA, exporte um backup em JSON.
 
+## Versao piloto
+
+Uma instalacao nova comeca sem clientes e sem pedidos de exemplo. Ela mantem apenas produtos iniciais comuns e uma rota principal, para o cliente real cadastrar sua operacao sem limpar dados demonstrativos.
+
+No escopo atual, "clientes" sao os restaurantes, padarias e mercados que compram hortifruti. Empresas, assinantes ou contas do sistema ficam para uma fase futura de autenticacao e licenciamento.
+
 ## Proximas etapas
 
-- Publicar uma versao HTTPS para testar PWA/offline corretamente.
-- Escolher hospedagem inicial.
-- Planejar autenticacao.
-- Planejar banco online e sincronizacao.
+- Rodar piloto com um cliente real por alguns ciclos de entrega.
+- Ajustar detalhes encontrados no uso diario.
+- Fortalecer rotina de backup antes de migrar para nuvem.
+- Depois do piloto, planejar autenticacao, banco online e sincronizacao.
 
 ## Documentacao
 
 - [Planejamento inicial](docs/planejamento-inicial.md)
 - [Status atual](docs/status-atual.md)
 - [Deploy HTTPS](docs/deploy-https.md)
+- [Teste com cliente real](docs/teste-cliente-real.md)

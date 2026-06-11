@@ -25,6 +25,8 @@ O app e usado internamente pelo dono/funcionario, nao pelo cliente final.
 - PDF de entrega por rota, separado por cliente.
 - Backup local em JSON.
 - Importacao de backup local em JSON.
+- Publicacao HTTPS via Vercel preparada.
+- Teste PWA/offline validado no celular.
 
 ## Regras importantes
 
@@ -50,13 +52,19 @@ O app e usado internamente pelo dono/funcionario, nao pelo cliente final.
 - Dados ficam no navegador do aparelho.
 - Ainda nao existe login.
 - Ainda nao existe banco online.
-- O teste offline completo precisa de HTTPS.
 - Mais de um usuario ao mesmo tempo ainda nao e suportado.
+- A sincronizacao entre aparelhos ainda nao existe.
 
 ## Proximos passos tecnicos
 
-1. Criar repositorio no GitHub.
-2. Publicar a PWA em HTTPS para validar instalacao/offline.
-3. Definir backend: Firebase ou Supabase.
-4. Criar autenticacao.
-5. Migrar dados locais para banco online com estrategia de backup/sincronizacao.
+1. Rodar piloto com cliente real usando uma instalacao limpa.
+2. Fazer backup JSON antes e depois dos dias de teste.
+3. Registrar ajustes percebidos no uso real: cadastro, pedidos, PDF e entrega.
+4. Depois do piloto, definir backend: Firebase ou Supabase.
+5. Criar autenticacao e migrar dados locais para banco online com estrategia de backup/sincronizacao.
+
+## Nomenclatura
+
+- Clientes: restaurantes, padarias, mercados e outros compradores dos pedidos.
+- Empresa: negocio que usa o HortiGiro na operacao.
+- Assinantes/contas/licencas: fase futura, quando existir painel de gestao e autenticacao.
