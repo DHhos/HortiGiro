@@ -1,0 +1,18 @@
+{
+  "name": "HortiGiro",
+  "short_name": "HortiGiro",
+  "description": "Pedidos de hortifruti e lista consolidada para compra no Ceasa.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f7f6",
+  "theme_color": "#287e1d",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/hortigiro-mark.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

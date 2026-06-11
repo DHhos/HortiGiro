@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#287e1d" />
+    <script>
+      (() => {
+        try {
+          const storedTheme = JSON.parse(localStorage.getItem("hortigiro.theme") || '"dark"');
+          const theme = storedTheme === "light" ? "light" : "dark";
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+        } catch {
+          document.documentElement.dataset.theme = "dark";
+          document.documentElement.style.colorScheme = "dark";
+        }
+      })();
+    </script>
+    <meta
+      name="description"
+      content="HortiGiro organiza pedidos de hortifruti e gera listas consolidadas para compra no Ceasa."
+    />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/hortigiro-mark.png" type="image/png" />
+    <link rel="apple-touch-icon" href="/hortigiro-mark.png" />
+    <title>HortiGiro</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
