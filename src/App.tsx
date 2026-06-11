@@ -27,7 +27,15 @@ import {
   Users,
   XCircle,
 } from "lucide-react";
-import { initialClients, initialOrders, initialProducts, initialRoutes, initialSettings, units } from "./data";
+import {
+  initialClients,
+  initialOrders,
+  initialProducts,
+  initialRoutes,
+  initialSettings,
+  suggestedProducts,
+  units,
+} from "./data";
 import type {
   AppSettings,
   Client,
@@ -169,6 +177,10 @@ function getRouteFallback(routeId: string | undefined): string {
   return routeId || DEFAULT_ROUTE_ID;
 }
 
+function getProductNameKey(value: string): string {
+  return normalizeText(value).replace(/[^a-z0-9]/g, "");
+}
+
 function usePersistentState<T>(key: string, initialValue: T) {
   const [value, setValue] = useState<T>(() => {
     try {
@@ -263,6 +275,7 @@ function App() {
   const [productCatalogSearch, setProductCatalogSearch] = useState("");
   const [productForm, setProductForm] = useState<ProductForm>(emptyProductForm);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [catalogMessage, setCatalogMessage] = useState("");
   const [routeName, setRouteName] = useState("");
   const [backupMessage, setBackupMessage] = useState("");
 
@@ -421,16 +434,21 @@ function App() {
   }, [products, productCatalogSearch]);
 
   const duplicateProduct = useMemo(() => {
-    const normalizedName = normalizeText(productForm.nome.trim());
+    const normalizedName = getProductNameKey(productForm.nome.trim());
 
     if (!normalizedName) {
       return undefined;
     }
 
     return products.find(
-      (product) => product.id !== editingProductId && normalizeText(product.nome.trim()) === normalizedName,
+      (product) => product.id !== editingProductId && getProductNameKey(product.nome.trim()) === normalizedName,
     );
   }, [editingProductId, productForm.nome, products]);
+
+  const suggestedProductsToImport = useMemo(() => {
+    const currentProductKeys = new Set(products.map((product) => getProductNameKey(product.nome)));
+    return suggestedProducts.filter((product) => !currentProductKeys.has(getProductNameKey(product.nome)));
+  }, [products]);
 
   const summary = useMemo(() => {
     const activeOrders = ordersForSelectedDelivery.filter((order) => order.status !== "cancelado");
@@ -815,6 +833,28 @@ function App() {
     setProducts((current) => [product, ...current]);
     setSelectedProductId(product.id);
     resetProductForm();
+  }
+
+  function importSuggestedProductCatalog() {
+    if (suggestedProductsToImport.length === 0) {
+      setCatalogMessage("Base sugerida já está cadastrada.");
+      return;
+    }
+
+    const importedAt = Date.now();
+    const productsToAdd = suggestedProductsToImport.map((product, index) => ({
+      ...product,
+      id: `produto-sugerido-${importedAt}-${index}`,
+      ativo: true,
+    }));
+
+    setProducts((current) =>
+      [...current, ...productsToAdd].sort((first, second) =>
+        first.nome.localeCompare(second.nome, "pt-BR"),
+      ),
+    );
+    setSelectedProductId(productsToAdd[0]?.id ?? selectedProductId);
+    setCatalogMessage(`${productsToAdd.length} produtos adicionados.`);
   }
 
   function toggleProductStatus(productId: string) {
@@ -2149,6 +2189,33 @@ function App() {
             <h1>Produtos</h1>
           </div>
         </div>
+
+        <section className="form-surface">
+          <div className="section-heading">
+            <h2>Base de produtos</h2>
+            <span className="soft-badge">{products.length} cadastrados</span>
+          </div>
+          <div className="product-base-row">
+            <div>
+              <strong>Base limpa</strong>
+              <span>Cadastro manual</span>
+            </div>
+            <div>
+              <strong>Base sugerida</strong>
+              <span>{suggestedProductsToImport.length} novos disponíveis</span>
+            </div>
+            <button
+              className="secondary-button align-end"
+              type="button"
+              disabled={suggestedProductsToImport.length === 0}
+              onClick={importSuggestedProductCatalog}
+            >
+              <Package size={18} aria-hidden="true" />
+              Importar base
+            </button>
+          </div>
+          {catalogMessage ? <p className="form-alert info-alert">{catalogMessage}</p> : null}
+        </section>
 
         <section className="form-surface">
           <div className="section-heading">

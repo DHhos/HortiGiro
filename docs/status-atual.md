@@ -14,6 +14,7 @@ O app e usado internamente pelo dono/funcionario, nao pelo cliente final.
 - Tema escuro.
 - Logo e identidade visual do HortiGiro.
 - Cadastro de produtos com unidade padrao.
+- Base sugerida de produtos importavel.
 - Cadastro e edicao de clientes.
 - Cadastro, edicao, inativacao e ordenacao de rotas.
 - Pedido por cliente, data de entrega e rota.
@@ -35,6 +36,7 @@ O app e usado internamente pelo dono/funcionario, nao pelo cliente final.
 - A logo permanece fixa.
 - O rodape do PDF permanece fixo.
 - Somente o nome da empresa pode ser alterado nas configuracoes.
+- Produtos podem comecar em base limpa ou receber a base sugerida de hortifruti.
 - A compra no Ceasa usa a lista geral.
 - A separacao e entrega usam os PDFs por rota.
 

@@ -6,6 +6,8 @@ PWA para registrar pedidos de hortifruti por cliente, organizar entregas por rot
 
 O projeto esta em fase de MVP piloto. As principais funcoes ja foram validadas no celular, incluindo instalacao PWA em HTTPS e uso offline:
 
+URL piloto: <https://horti-giro.vercel.app/>
+
 - lancamento rapido de pedidos por cliente;
 - data de entrega pre-selecionada para o dia seguinte;
 - produtos com unidade padrao e quantidade decimal;
@@ -20,6 +22,7 @@ O projeto esta em fase de MVP piloto. As principais funcoes ja foram validadas n
 - tema escuro;
 - PWA instalavel.
 - funcionamento offline validado em HTTPS/Vercel.
+- base sugerida de produtos importavel, sem duplicar cadastros existentes.
 
 ## Tecnologias
 
@@ -119,7 +122,9 @@ Antes de limpar navegador, trocar aparelho ou reinstalar o PWA, exporte um backu
 
 ## Versao piloto
 
-Uma instalacao nova comeca sem clientes e sem pedidos de exemplo. Ela mantem apenas produtos iniciais comuns e uma rota principal, para o cliente real cadastrar sua operacao sem limpar dados demonstrativos.
+Uma instalacao nova comeca sem clientes, sem pedidos e sem produtos de exemplo. Ela mantem apenas uma rota principal.
+
+Na tela de Produtos, o usuario pode seguir com a base limpa ou importar uma base sugerida de hortifruti. A importacao pula produtos que ja existem no cadastro.
 
 No escopo atual, "clientes" sao os restaurantes, padarias e mercados que compram hortifruti. Empresas, assinantes ou contas do sistema ficam para uma fase futura de autenticacao e licenciamento.
 

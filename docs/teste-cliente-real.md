@@ -11,8 +11,9 @@ Validar o HortiGiro em uma rotina real de pedidos, compra no Ceasa, separacao po
 3. Acessar Configuracoes e conferir o nome da empresa.
 4. Cadastrar rotas reais, se existir mais de uma.
 5. Cadastrar clientes reais dos pedidos.
-6. Revisar produtos iniciais e adicionar os que faltarem.
-7. Exportar um backup JSON inicial.
+6. Escolher entre base limpa ou importar a base sugerida na tela de Produtos.
+7. Revisar produtos e unidades padrao.
+8. Exportar um backup JSON inicial.
 
 ## Durante o teste
 

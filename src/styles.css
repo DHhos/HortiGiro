@@ -741,6 +741,36 @@ textarea:focus {
   font-weight: 800;
 }
 
+.info-alert {
+  border-color: var(--border);
+  color: var(--text);
+  background: var(--surface-muted);
+}
+
+.product-base-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.product-base-row strong,
+.product-base-row span {
+  display: block;
+}
+
+.product-base-row strong {
+  color: var(--text);
+  font-size: 0.98rem;
+}
+
+.product-base-row span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
 .product-finder {
   display: grid;
   gap: 12px;
@@ -1084,7 +1114,8 @@ textarea:focus {
   .route-create,
   .route-pdf-card,
   .route-management-row,
-  .settings-brand-row {
+  .settings-brand-row,
+  .product-base-row {
     grid-template-columns: 1fr;
   }
 
