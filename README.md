@@ -118,7 +118,6 @@ Antes de limpar navegador, trocar aparelho ou reinstalar o PWA, exporte um backu
 
 ## Proximas etapas
 
-- Criar repositorio no GitHub.
 - Publicar uma versao HTTPS para testar PWA/offline corretamente.
 - Escolher hospedagem inicial.
 - Planejar autenticacao.
@@ -128,3 +127,4 @@ Antes de limpar navegador, trocar aparelho ou reinstalar o PWA, exporte um backu
 
 - [Planejamento inicial](docs/planejamento-inicial.md)
 - [Status atual](docs/status-atual.md)
+- [Deploy HTTPS](docs/deploy-https.md)
