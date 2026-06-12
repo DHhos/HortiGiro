@@ -92,6 +92,16 @@ interface ProductForm {
   unidadePadrao: Unit;
 }
 
+interface QuickOrderLine {
+  id: string;
+  raw: string;
+  quantidade: number | null;
+  unidade: Unit;
+  produtoTexto: string;
+  selectedProductId: string;
+  status: "ready" | "needs-product" | "invalid";
+}
+
 interface BackupPayload {
   version: 1;
   exportedAt: string;
@@ -134,6 +144,48 @@ const pluralUnits: Record<Unit, string> = {
   cartela: "cartelas",
   saco: "sacos",
   pacote: "pacotes",
+  kg: "kg",
+};
+
+const unitAliases: Record<string, Unit> = {
+  bd: "bandeja",
+  bds: "bandeja",
+  bandeja: "bandeja",
+  bandejas: "bandeja",
+  caixa: "caixa",
+  caixas: "caixa",
+  cartela: "cartela",
+  cartelas: "cartela",
+  ct: "cartela",
+  cts: "cartela",
+  cx: "caixa",
+  cxs: "caixa",
+  duzia: "dúzia",
+  duzias: "dúzia",
+  dz: "dúzia",
+  dzs: "dúzia",
+  kg: "kg",
+  kgs: "kg",
+  maco: "maço",
+  macos: "maço",
+  maço: "maço",
+  maços: "maço",
+  mc: "maço",
+  mcs: "maço",
+  pacote: "pacote",
+  pacotes: "pacote",
+  pc: "pacote",
+  pct: "pacote",
+  pcts: "pacote",
+  saco: "saco",
+  sacos: "saco",
+  sc: "saco",
+  scs: "saco",
+  un: "unidade",
+  und: "unidade",
+  unds: "unidade",
+  unidade: "unidade",
+  unidades: "unidade",
 };
 
 function getDisplayUnit(quantity: number, unit: Unit): string {
@@ -182,6 +234,10 @@ function getProductNameKey(value: string): string {
   return normalizeText(value).replace(/[^a-z0-9]/g, "");
 }
 
+function getUnitKey(value: string): string {
+  return normalizeText(value).replace(/[^a-z0-9]/g, "");
+}
+
 function sortProductsByName(productList: Product[]): Product[] {
   return [...productList].sort((first, second) =>
     first.nome.localeCompare(second.nome, "pt-BR", {
@@ -189,6 +245,125 @@ function sortProductsByName(productList: Product[]): Product[] {
       sensitivity: "base",
     }),
   );
+}
+
+function getUnitFromToken(value: string): Unit | undefined {
+  return unitAliases[getUnitKey(value)];
+}
+
+function findProductByText(productText: string, productList: Product[]): Product | undefined {
+  const productKey = getProductNameKey(productText);
+
+  if (!productKey) {
+    return undefined;
+  }
+
+  const variants = productKey.endsWith("s") ? [productKey, productKey.slice(0, -1)] : [productKey, `${productKey}s`];
+
+  for (const variant of variants) {
+    const exactMatch = productList.find((product) => getProductNameKey(product.nome) === variant);
+
+    if (exactMatch) {
+      return exactMatch;
+    }
+  }
+
+  if (productKey.length < 5) {
+    return undefined;
+  }
+
+  const partialMatches = productList.filter((product) => {
+    const currentKey = getProductNameKey(product.nome);
+    return currentKey.includes(productKey) || productKey.includes(currentKey);
+  });
+
+  return partialMatches.length === 1 ? partialMatches[0] : undefined;
+}
+
+function isIgnoredQuickOrderLine(value: string): boolean {
+  const key = getProductNameKey(value);
+
+  return (
+    !key ||
+    key.includes("listadecompras") ||
+    key === "ceasa" ||
+    key === "qtd" ||
+    key === "produto" ||
+    key === "total" ||
+    key === "rsunt" ||
+    key === "rsunttotal" ||
+    key === "qtdprodutorsunttotal"
+  );
+}
+
+function parseQuickOrderText(
+  value: string,
+  productList: Product[],
+  productOverrides: Record<string, string>,
+  unitOverrides: Record<string, Unit>,
+): QuickOrderLine[] {
+  return value.split(/\r?\n/).reduce<QuickOrderLine[]>((lines, rawLine, index) => {
+      const raw = rawLine.trim();
+      const normalizedLine = raw.replace(/[|;]+/g, " ").replace(/\s+/g, " ").trim();
+
+      if (isIgnoredQuickOrderLine(normalizedLine)) {
+        return lines;
+      }
+
+      const id = `${index}-${getProductNameKey(normalizedLine) || "linha"}`;
+      const match = normalizedLine.match(/^(\d+(?:[,.]\d+)?)\s*(.*)$/);
+
+      if (!match) {
+        lines.push({
+          id,
+          raw,
+          quantidade: null,
+          unidade: unitOverrides[id] ?? "caixa",
+          produtoTexto: normalizedLine,
+          selectedProductId: productOverrides[id] ?? "",
+          status: "invalid",
+        });
+        return lines;
+      }
+
+      const quantidade = parseQuantity(match[1]);
+      const remainder = match[2].trim();
+      const parts = remainder.split(/\s+/).filter(Boolean);
+      const parsedUnit = parts[0] ? getUnitFromToken(parts[0]) : undefined;
+      const unitWasExplicit = Boolean(parsedUnit);
+      const produtoTexto = (unitWasExplicit ? parts.slice(1).join(" ") : remainder)
+        .replace(/^[-:]+/, "")
+        .trim();
+      const overrideProduct = productOverrides[id]
+        ? productList.find((product) => product.id === productOverrides[id])
+        : undefined;
+      const matchedProduct = overrideProduct ?? findProductByText(produtoTexto, productList);
+      const unidade = unitOverrides[id] ?? parsedUnit ?? matchedProduct?.unidadePadrao ?? "caixa";
+
+      if (!Number.isFinite(quantidade) || quantidade <= 0 || !produtoTexto) {
+        lines.push({
+          id,
+          raw,
+          quantidade: Number.isFinite(quantidade) ? quantidade : null,
+          unidade,
+          produtoTexto,
+          selectedProductId: matchedProduct?.id ?? "",
+          status: "invalid",
+        });
+        return lines;
+      }
+
+      lines.push({
+        id,
+        raw,
+        quantidade,
+        unidade,
+        produtoTexto,
+        selectedProductId: matchedProduct?.id ?? "",
+        status: matchedProduct ? "ready" : "needs-product",
+      });
+      return lines;
+    }, []);
 }
 
 function sortClientsByName(clientList: Client[]): Client[] {
@@ -368,6 +543,11 @@ function App() {
   const [productSearch, setProductSearch] = useState("");
   const [selectedProductId, setSelectedProductId] = useState(initialProducts[0]?.id ?? "");
   const [quantity, setQuantity] = useState("1");
+  const [quickOrderOpen, setQuickOrderOpen] = useState(false);
+  const [quickOrderText, setQuickOrderText] = useState("");
+  const [quickOrderProductOverrides, setQuickOrderProductOverrides] = useState<Record<string, string>>({});
+  const [quickOrderUnitOverrides, setQuickOrderUnitOverrides] = useState<Record<string, Unit>>({});
+  const [quickOrderMessage, setQuickOrderMessage] = useState("");
 
   const [clientSearch, setClientSearch] = useState("");
   const [clientForm, setClientForm] = useState<ClientForm>(emptyClientForm);
@@ -523,6 +703,20 @@ function App() {
     return activeProducts.filter((product) => normalizeText(product.nome).includes(search));
   }, [activeProducts, productSearch]);
 
+  const quickOrderLines = useMemo(
+    () =>
+      parseQuickOrderText(
+        quickOrderText,
+        activeProducts,
+        quickOrderProductOverrides,
+        quickOrderUnitOverrides,
+      ),
+    [activeProducts, quickOrderProductOverrides, quickOrderText, quickOrderUnitOverrides],
+  );
+
+  const quickOrderReadyCount = quickOrderLines.filter((line) => line.status === "ready").length;
+  const quickOrderReviewCount = quickOrderLines.filter((line) => line.status !== "ready").length;
+
   const filteredClients = useMemo(() => {
     const search = normalizeText(clientSearch);
     return sortClientsByName(
@@ -611,6 +805,14 @@ function App() {
     setClientForm((current) => ({ ...current, routeId }));
   }
 
+  function resetQuickOrder() {
+    setQuickOrderOpen(false);
+    setQuickOrderText("");
+    setQuickOrderProductOverrides({});
+    setQuickOrderUnitOverrides({});
+    setQuickOrderMessage("");
+  }
+
   function startNewOrder() {
     setEditingOrderId(null);
     setOrderClientId(activeClientsForSelectedRoute[0]?.id ?? "");
@@ -620,6 +822,7 @@ function App() {
     setProductSearch("");
     setSelectedProductId(activeProducts[0]?.id ?? "");
     setQuantity("1");
+    resetQuickOrder();
     openView("new-order");
   }
 
@@ -632,6 +835,7 @@ function App() {
     setProductSearch("");
     setSelectedProductId(activeProducts[0]?.id ?? "");
     setQuantity("1");
+    resetQuickOrder();
     openView("new-order");
   }
 
@@ -673,6 +877,50 @@ function App() {
     });
     setQuantity("1");
     setProductSearch("");
+  }
+
+  function updateQuickOrderProduct(lineId: string, productId: string) {
+    setQuickOrderProductOverrides((current) => ({ ...current, [lineId]: productId }));
+    setQuickOrderMessage("");
+  }
+
+  function updateQuickOrderUnit(lineId: string, unit: Unit) {
+    setQuickOrderUnitOverrides((current) => ({ ...current, [lineId]: unit }));
+    setQuickOrderMessage("");
+  }
+
+  function addQuickOrderItems() {
+    const itemsToAdd = quickOrderLines
+      .filter((line) => line.status === "ready" && line.quantidade && line.selectedProductId)
+      .map((line, index) => {
+        const product = activeProducts.find((currentProduct) => currentProduct.id === line.selectedProductId);
+
+        if (!product || !line.quantidade) {
+          return undefined;
+        }
+
+        return {
+          id: `quick-${Date.now()}-${index}-${product.id}`,
+          produtoId: product.id,
+          produtoNome: product.nome,
+          quantidade: line.quantidade,
+          unidade: line.unidade,
+          observacao: "",
+        } satisfies DraftItem;
+      })
+      .filter((item): item is DraftItem => Boolean(item));
+
+    if (itemsToAdd.length === 0) {
+      setQuickOrderMessage("Nenhum item pronto para adicionar.");
+      return;
+    }
+
+    setDraftItems((current) => mergeDraftItems([...current.map((item) => ({ ...item })), ...itemsToAdd]));
+    setQuickOrderText("");
+    setQuickOrderProductOverrides({});
+    setQuickOrderUnitOverrides({});
+    setQuickOrderMessage(`${itemsToAdd.length} itens adicionados.`);
+    setQuickOrderOpen(false);
   }
 
   function removeDraftItem(itemId: string) {
@@ -761,6 +1009,7 @@ function App() {
     setSelectedDeliveryDate(orderDeliveryDate);
     setEditingOrderId(null);
     setDraftItems([]);
+    resetQuickOrder();
     openView("orders");
   }
 
@@ -1678,6 +1927,117 @@ function App() {
           <div className="section-heading">
             <h2>Itens do pedido</h2>
             <span className="soft-badge">{draftItems.length} itens</span>
+          </div>
+
+          <div className="quick-order-panel">
+            <div className="quick-order-top">
+              <div>
+                <strong>Pedido rápido</strong>
+                <span>
+                  {quickOrderLines.length > 0
+                    ? `${quickOrderReadyCount} prontos - ${quickOrderReviewCount} revisar`
+                    : "Colar lista"}
+                </span>
+              </div>
+              <button
+                className="secondary-button compact"
+                type="button"
+                onClick={() => {
+                  setQuickOrderOpen((current) => !current);
+                  setQuickOrderMessage("");
+                }}
+              >
+                <ClipboardList size={16} aria-hidden="true" />
+                {quickOrderOpen ? "Fechar" : "Colar lista"}
+              </button>
+            </div>
+
+            {quickOrderOpen ? (
+              <div className="quick-order-body">
+                <label>
+                  <span>Lista em texto</span>
+                  <textarea
+                    rows={5}
+                    value={quickOrderText}
+                    onChange={(event) => {
+                      setQuickOrderText(event.target.value);
+                      setQuickOrderMessage("");
+                    }}
+                    placeholder={"4 cx Abacaxi\n2 cx Abobrinha\n6 mc Agrião"}
+                  />
+                </label>
+
+                {quickOrderLines.length > 0 ? (
+                  <div className="quick-order-preview" aria-label="Prévia do pedido rápido">
+                    {quickOrderLines.map((line) => (
+                      <article className={`quick-order-row ${line.status}`} key={line.id}>
+                        <div className="quick-order-read">
+                          <strong>
+                            {line.quantidade ? formatQuantityWithUnit(line.quantidade, line.unidade) : "Revisar"}
+                          </strong>
+                          <span>{line.produtoTexto || line.raw}</span>
+                        </div>
+                        <div className="quick-order-controls">
+                          <select
+                            value={line.selectedProductId}
+                            onChange={(event) => updateQuickOrderProduct(line.id, event.target.value)}
+                            aria-label={`Produto para ${line.produtoTexto || line.raw}`}
+                          >
+                            <option value="">Selecionar produto</option>
+                            {activeProducts.map((product) => (
+                              <option value={product.id} key={product.id}>
+                                {product.nome}
+                              </option>
+                            ))}
+                          </select>
+                          <select
+                            value={line.unidade}
+                            onChange={(event) => updateQuickOrderUnit(line.id, event.target.value as Unit)}
+                            aria-label={`Unidade para ${line.produtoTexto || line.raw}`}
+                          >
+                            {units.map((unit) => (
+                              <option value={unit} key={unit}>
+                                {unit}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
+
+                {quickOrderMessage ? <p className="form-alert info-alert">{quickOrderMessage}</p> : null}
+
+                <div className="quick-order-actions">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={!quickOrderText.trim()}
+                    onClick={() => {
+                      setQuickOrderText("");
+                      setQuickOrderProductOverrides({});
+                      setQuickOrderUnitOverrides({});
+                      setQuickOrderMessage("");
+                    }}
+                  >
+                    <XCircle size={18} aria-hidden="true" />
+                    Limpar
+                  </button>
+                  <button
+                    className="primary-button"
+                    type="button"
+                    disabled={quickOrderReadyCount === 0}
+                    onClick={addQuickOrderItems}
+                  >
+                    <Plus size={18} aria-hidden="true" />
+                    Adicionar itens
+                  </button>
+                </div>
+              </div>
+            ) : quickOrderMessage ? (
+              <p className="form-alert info-alert">{quickOrderMessage}</p>
+            ) : null}
           </div>
 
           <div className="product-finder">

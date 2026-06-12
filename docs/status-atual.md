@@ -18,6 +18,7 @@ O app e usado internamente pelo dono/funcionario, nao pelo cliente final.
 - Cadastro e edicao de clientes.
 - Cadastro, edicao, inativacao e ordenacao de rotas.
 - Pedido por cliente, data de entrega e rota.
+- Pedido rapido por texto colado, com conferencia antes de adicionar.
 - Entrega pre-selecionada para o dia seguinte ao criar novo pedido.
 - Soma de itens repetidos dentro do pedido.
 - Unificacao de pedidos do mesmo cliente, mesma data e mesma rota.

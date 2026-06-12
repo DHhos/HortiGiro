@@ -9,6 +9,7 @@ O projeto esta em fase de MVP piloto. As principais funcoes ja foram validadas n
 URL piloto: <https://horti-giro.vercel.app/>
 
 - lancamento rapido de pedidos por cliente;
+- pedido rapido por texto colado;
 - data de entrega pre-selecionada para o dia seguinte;
 - produtos com unidade padrao e quantidade decimal;
 - soma automatica de itens repetidos;

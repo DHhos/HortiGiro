@@ -9,6 +9,7 @@ export const units: Unit[] = [
   "cartela",
   "saco",
   "pacote",
+  "kg",
 ];
 
 export const initialRoutes: Route[] = [{ id: "route-principal", nome: "Rota Principal", ativo: true }];

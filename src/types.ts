@@ -8,7 +8,8 @@ export type Unit =
   | "dúzia"
   | "cartela"
   | "saco"
-  | "pacote";
+  | "pacote"
+  | "kg";
 
 export interface Route {
   id: string;

@@ -780,6 +780,83 @@ textarea:focus {
   gap: 12px;
 }
 
+.quick-order-panel {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.quick-order-top,
+.quick-order-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.quick-order-top strong,
+.quick-order-top span {
+  display: block;
+}
+
+.quick-order-top strong {
+  color: var(--text);
+  font-size: 0.98rem;
+}
+
+.quick-order-top span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.quick-order-body,
+.quick-order-preview {
+  display: grid;
+  gap: 10px;
+}
+
+.quick-order-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.9fr);
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.quick-order-read strong,
+.quick-order-read span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.quick-order-read strong {
+  color: var(--text);
+}
+
+.quick-order-read span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.quick-order-row.needs-product .quick-order-read strong,
+.quick-order-row.invalid .quick-order-read strong {
+  color: var(--warning-text);
+}
+
+.quick-order-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px;
+  gap: 8px;
+}
+
 .search-field {
   position: relative;
   display: flex;
@@ -1119,17 +1196,25 @@ textarea:focus {
   .route-pdf-card,
   .route-management-row,
   .settings-brand-row,
-  .product-base-row {
+  .product-base-row,
+  .quick-order-row,
+  .quick-order-controls {
     grid-template-columns: 1fr;
   }
 
   .route-management-actions,
   .route-pdf-actions,
   .backup-actions,
-  .settings-logo-actions {
+  .settings-logo-actions,
+  .quick-order-actions {
     display: grid;
     grid-template-columns: 1fr;
     width: 100%;
+  }
+
+  .quick-order-top {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .calendar-action {
