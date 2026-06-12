@@ -238,6 +238,10 @@ function getUnitKey(value: string): string {
   return normalizeText(value).replace(/[^a-z0-9]/g, "");
 }
 
+function getTokenKey(value: string): string {
+  return normalizeText(value).replace(/[^a-z0-9,.]/g, "");
+}
+
 function sortProductsByName(productList: Product[]): Product[] {
   return [...productList].sort((first, second) =>
     first.nome.localeCompare(second.nome, "pt-BR", {
@@ -247,8 +251,62 @@ function sortProductsByName(productList: Product[]): Product[] {
   );
 }
 
+function getEditDistance(firstValue: string, secondValue: string): number {
+  const first = getProductNameKey(firstValue);
+  const second = getProductNameKey(secondValue);
+  const distances = Array.from({ length: first.length + 1 }, () => Array(second.length + 1).fill(0));
+
+  for (let firstIndex = 0; firstIndex <= first.length; firstIndex += 1) {
+    distances[firstIndex][0] = firstIndex;
+  }
+
+  for (let secondIndex = 0; secondIndex <= second.length; secondIndex += 1) {
+    distances[0][secondIndex] = secondIndex;
+  }
+
+  for (let firstIndex = 1; firstIndex <= first.length; firstIndex += 1) {
+    for (let secondIndex = 1; secondIndex <= second.length; secondIndex += 1) {
+      const substitutionCost = first[firstIndex - 1] === second[secondIndex - 1] ? 0 : 1;
+      distances[firstIndex][secondIndex] = Math.min(
+        distances[firstIndex - 1][secondIndex] + 1,
+        distances[firstIndex][secondIndex - 1] + 1,
+        distances[firstIndex - 1][secondIndex - 1] + substitutionCost,
+      );
+    }
+  }
+
+  return distances[first.length][second.length];
+}
+
+function isCloseTextMatch(inputValue: string, candidateValue: string): boolean {
+  const input = getProductNameKey(inputValue);
+  const candidate = getProductNameKey(candidateValue);
+
+  if (!input || !candidate) {
+    return false;
+  }
+
+  if (input === candidate) {
+    return true;
+  }
+
+  const maxLength = Math.max(input.length, candidate.length);
+  const maxDistance = maxLength <= 5 ? 1 : maxLength <= 10 ? 2 : 3;
+
+  return getEditDistance(input, candidate) <= maxDistance;
+}
+
 function getUnitFromToken(value: string): Unit | undefined {
-  return unitAliases[getUnitKey(value)];
+  const unitKey = getUnitKey(value);
+  const directUnit = unitAliases[unitKey];
+
+  if (directUnit) {
+    return directUnit;
+  }
+
+  const closeUnit = Object.entries(unitAliases).find(([alias]) => isCloseTextMatch(unitKey, alias));
+
+  return closeUnit?.[1];
 }
 
 function findProductByText(productText: string, productList: Product[]): Product | undefined {
@@ -277,7 +335,26 @@ function findProductByText(productText: string, productList: Product[]): Product
     return currentKey.includes(productKey) || productKey.includes(currentKey);
   });
 
-  return partialMatches.length === 1 ? partialMatches[0] : undefined;
+  if (partialMatches.length === 1) {
+    return partialMatches[0];
+  }
+
+  const closeMatches = productList
+    .map((product) => ({
+      product,
+      distance: getEditDistance(productKey, product.nome),
+    }))
+    .filter(({ product, distance }) => {
+      const productNameLength = getProductNameKey(product.nome).length;
+      const maxLength = Math.max(productKey.length, productNameLength);
+      const maxDistance = maxLength <= 5 ? 1 : maxLength <= 10 ? 2 : 3;
+      return distance <= maxDistance;
+    })
+    .sort((first, second) => first.distance - second.distance);
+
+  return closeMatches.length === 1 || closeMatches[0]?.distance < closeMatches[1]?.distance
+    ? closeMatches[0]?.product
+    : undefined;
 }
 
 function isIgnoredQuickOrderLine(value: string): boolean {
@@ -296,6 +373,23 @@ function isIgnoredQuickOrderLine(value: string): boolean {
   );
 }
 
+function extractQuickOrderLineParts(value: string) {
+  const tokens = value.split(/\s+/).filter(Boolean);
+  const quantityIndex = tokens.findIndex((token) => /^\d+(?:[,.]\d+)?$/.test(getTokenKey(token)));
+  const quantidade = quantityIndex >= 0 ? parseQuantity(getTokenKey(tokens[quantityIndex])) : Number.NaN;
+  const tokensWithoutQuantity = tokens.filter((_, index) => index !== quantityIndex);
+  const unitIndex = tokensWithoutQuantity.findIndex((token) => Boolean(getUnitFromToken(token)));
+  const unidade = unitIndex >= 0 ? getUnitFromToken(tokensWithoutQuantity[unitIndex]) : undefined;
+  const productTokens = tokensWithoutQuantity.filter((_, index) => index !== unitIndex);
+  const produtoTexto = productTokens.join(" ").replace(/^[-:]+/, "").trim();
+
+  return {
+    quantidade,
+    unidade,
+    produtoTexto,
+  };
+}
+
 function parseQuickOrderText(
   value: string,
   productList: Product[],
@@ -311,9 +405,9 @@ function parseQuickOrderText(
       }
 
       const id = `${index}-${getProductNameKey(normalizedLine) || "linha"}`;
-      const match = normalizedLine.match(/^(\d+(?:[,.]\d+)?)\s*(.*)$/);
+      const { quantidade, unidade: parsedUnit, produtoTexto } = extractQuickOrderLineParts(normalizedLine);
 
-      if (!match) {
+      if (!Number.isFinite(quantidade)) {
         lines.push({
           id,
           raw,
@@ -326,14 +420,6 @@ function parseQuickOrderText(
         return lines;
       }
 
-      const quantidade = parseQuantity(match[1]);
-      const remainder = match[2].trim();
-      const parts = remainder.split(/\s+/).filter(Boolean);
-      const parsedUnit = parts[0] ? getUnitFromToken(parts[0]) : undefined;
-      const unitWasExplicit = Boolean(parsedUnit);
-      const produtoTexto = (unitWasExplicit ? parts.slice(1).join(" ") : remainder)
-        .replace(/^[-:]+/, "")
-        .trim();
       const overrideProduct = productOverrides[id]
         ? productList.find((product) => product.id === productOverrides[id])
         : undefined;
