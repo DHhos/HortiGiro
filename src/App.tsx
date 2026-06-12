@@ -339,6 +339,18 @@ function findProductByText(productText: string, productList: Product[]): Product
     return partialMatches[0];
   }
 
+  if (partialMatches.length > 1) {
+    const sortedPartialMatches = [...partialMatches].sort(
+      (first, second) => getProductNameKey(second.nome).length - getProductNameKey(first.nome).length,
+    );
+    const firstMatchKey = getProductNameKey(sortedPartialMatches[0].nome);
+    const secondMatchKey = getProductNameKey(sortedPartialMatches[1].nome);
+
+    if (firstMatchKey.length > secondMatchKey.length) {
+      return sortedPartialMatches[0];
+    }
+  }
+
   const closeMatches = productList
     .map((product) => ({
       product,

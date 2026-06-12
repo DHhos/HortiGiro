@@ -143,6 +143,11 @@ export const suggestedProducts: Product[] = [
   { id: "catalogo-111", nome: "Repolho roxo", unidadePadrao: "caixa", ativo: true },
   { id: "catalogo-112", nome: "Salsão", unidadePadrao: "unidade", ativo: true },
   { id: "catalogo-113", nome: "Tomate salada", unidadePadrao: "caixa", ativo: true },
+  { id: "catalogo-114", nome: "Batata 20kg", unidadePadrao: "saco", ativo: true },
+  { id: "catalogo-115", nome: "Batata 25kg", unidadePadrao: "saco", ativo: true },
+  { id: "catalogo-116", nome: "Cebola 20kg", unidadePadrao: "saco", ativo: true },
+  { id: "catalogo-117", nome: "Cebola 25kg", unidadePadrao: "saco", ativo: true },
+  { id: "catalogo-118", nome: "Laranja 25kg", unidadePadrao: "saco", ativo: true },
 ];
 
 export const initialOrders: Order[] = [];
