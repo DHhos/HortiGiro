@@ -473,7 +473,7 @@ function parseQuickOrderText(
         ? productList.find((product) => product.id === productOverrides[id])
         : undefined;
       const matchedProduct = overrideProduct ?? findProductByText(produtoTexto, productList);
-      const unidade = unitOverrides[id] ?? parsedUnit ?? matchedProduct?.unidadePadrao ?? "caixa";
+      const unidade = matchedProduct?.unidadePadrao ?? unitOverrides[id] ?? parsedUnit ?? "caixa";
 
       if (!Number.isFinite(quantidade) || quantidade <= 0 || !produtoTexto) {
         lines.push({
@@ -616,14 +616,17 @@ function getStatusLabel(status: OrderStatus): string {
   return labels[status];
 }
 
-function buildConsolidatedItems(orders: Order[]): ConsolidatedItem[] {
+function buildConsolidatedItems(orders: Order[], productById: ReadonlyMap<string, Product>): ConsolidatedItem[] {
   const grouped = new Map<string, ConsolidatedItem>();
 
   orders
     .filter((order) => order.status !== "cancelado")
     .forEach((order) => {
       order.itens.forEach((item) => {
-        const key = `${item.produtoId}:${item.unidade}`;
+        const product = productById.get(item.produtoId);
+        const productName = product?.nome ?? item.produtoNome;
+        const unit = product?.unidadePadrao ?? item.unidade;
+        const key = `${item.produtoId}:${unit}`;
         const current = grouped.get(key);
 
         if (current) {
@@ -636,9 +639,9 @@ function buildConsolidatedItems(orders: Order[]): ConsolidatedItem[] {
 
         grouped.set(key, {
           produtoId: item.produtoId,
-          produtoNome: item.produtoNome,
+          produtoNome: productName,
           quantidade: item.quantidade,
-          unidade: item.unidade,
+          unidade: unit,
         });
       });
     });
@@ -753,6 +756,10 @@ function App() {
     () => new Map(clients.map((client) => [client.id, client])),
     [clients],
   );
+  const productById = useMemo(
+    () => new Map(products.map((product) => [product.id, product])),
+    [products],
+  );
 
   function getOrderRouteId(order: Order) {
     return getRouteFallback(order.routeId ?? clientById.get(order.clienteId)?.routeId);
@@ -822,13 +829,13 @@ function App() {
   );
 
   const consolidatedItems = useMemo(
-    () => buildConsolidatedItems(ordersForSelectedDelivery),
-    [ordersForSelectedDelivery],
+    () => buildConsolidatedItems(ordersForSelectedDelivery, productById),
+    [ordersForSelectedDelivery, productById],
   );
 
   const consolidatedAllItems = useMemo(
-    () => buildConsolidatedItems(ordersForSelectedDate),
-    [ordersForSelectedDate],
+    () => buildConsolidatedItems(ordersForSelectedDate, productById),
+    [ordersForSelectedDate, productById],
   );
 
   const selectedOrder = selectedOrderId ? orders.find((order) => order.id === selectedOrderId) : undefined;
@@ -910,7 +917,7 @@ function App() {
     () =>
       activeRoutes.map((route) => {
         const routeOrders = ordersForSelectedDate.filter((order) => getOrderRouteId(order) === route.id);
-        const routeItems = buildConsolidatedItems(routeOrders);
+        const routeItems = buildConsolidatedItems(routeOrders, productById);
         const routeActiveOrders = routeOrders.filter((order) => order.status !== "cancelado");
 
         return {
@@ -920,7 +927,7 @@ function App() {
           itens: routeItems.length,
         };
       }),
-    [activeRoutes, clientById, ordersForSelectedDate],
+    [activeRoutes, clientById, ordersForSelectedDate, productById],
   );
 
   function openView(nextView: View) {
@@ -938,6 +945,22 @@ function App() {
   function handleRouteChange(routeId: string) {
     setSelectedRouteId(routeId);
     setClientForm((current) => ({ ...current, routeId }));
+  }
+
+  function normalizeDraftItemsToProductDefaults(items: DraftItem[]): DraftItem[] {
+    return items.map((item) => {
+      const product = productById.get(item.produtoId);
+
+      if (!product) {
+        return item;
+      }
+
+      return {
+        ...item,
+        produtoNome: product.nome,
+        unidade: product.unidadePadrao,
+      };
+    });
   }
 
   function resetQuickOrder() {
@@ -1050,7 +1073,9 @@ function App() {
       return;
     }
 
-    setDraftItems((current) => mergeDraftItems([...current.map((item) => ({ ...item })), ...itemsToAdd]));
+    setDraftItems((current) =>
+      mergeDraftItems(normalizeDraftItemsToProductDefaults([...current.map((item) => ({ ...item })), ...itemsToAdd])),
+    );
     setQuickOrderText("");
     setQuickOrderProductOverrides({});
     setQuickOrderUnitOverrides({});
@@ -1074,7 +1099,7 @@ function App() {
     }
 
     const now = new Date().toISOString();
-    const normalizedItems: OrderItem[] = mergeDraftItems(draftItems).map((item) => ({
+    const normalizedItems: OrderItem[] = mergeDraftItems(normalizeDraftItemsToProductDefaults(draftItems)).map((item) => ({
       ...item,
       id: item.id.startsWith("draft-") ? `item-${Date.now()}-${item.produtoId}` : item.id,
     }));
@@ -1478,7 +1503,7 @@ function App() {
     const quantityWidth = tableWidth - productWidth;
     const rowHeight = 13;
     const pdfOrders = getOrdersForPdf(scope);
-    const pdfItems = buildConsolidatedItems(pdfOrders);
+    const pdfItems = buildConsolidatedItems(pdfOrders, productById);
     const pdfActiveOrders = pdfOrders.filter((order) => order.status !== "cancelado");
     const pdfSummary = {
       pedidos: pdfActiveOrders.length,
@@ -1597,7 +1622,7 @@ function App() {
   }
 
   async function exportPdf(mode: "download" | "share", scope: PdfScope = { type: "route", routeId: selectedRouteId }) {
-    const pdfItems = buildConsolidatedItems(getOrdersForPdf(scope));
+    const pdfItems = buildConsolidatedItems(getOrdersForPdf(scope), productById);
 
     if (pdfItems.length === 0) {
       return;
@@ -2129,6 +2154,7 @@ function App() {
                             value={line.unidade}
                             onChange={(event) => updateQuickOrderUnit(line.id, event.target.value as Unit)}
                             aria-label={`Unidade para ${line.produtoTexto || line.raw}`}
+                            disabled={Boolean(line.selectedProductId)}
                           >
                             {units.map((unit) => (
                               <option value={unit} key={unit}>

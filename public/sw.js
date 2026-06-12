@@ -1,4 +1,4 @@
-const CACHE_NAME = "hortigiro-shell-v25";
+const CACHE_NAME = "hortigiro-shell-v26";
 const APP_ASSETS = ["/", "/index.html", "/manifest.webmanifest", "/hortigiro-mark.png"];
 
 self.addEventListener("install", (event) => {
