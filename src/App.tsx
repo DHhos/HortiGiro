@@ -188,6 +188,32 @@ const unitAliases: Record<string, Unit> = {
   unidades: "unidade",
 };
 
+const commonUnitTypos: Record<string, Unit> = {
+  banddeja: "bandeja",
+  bandeija: "bandeja",
+  bandeijas: "bandeja",
+  bandej: "bandeja",
+  banjeira: "bandeja",
+  banjeiras: "bandeja",
+  bdj: "bandeja",
+  caisa: "caixa",
+  caiza: "caixa",
+  caxa: "caixa",
+  caxas: "caixa",
+  caxia: "caixa",
+  cxsx: "caixa",
+  dusia: "dúzia",
+  maccho: "maço",
+  masso: "maço",
+  massos: "maço",
+  mco: "maço",
+  pakote: "pacote",
+  pakeote: "pacote",
+  sakos: "saco",
+  unid: "unidade",
+  unidada: "unidade",
+};
+
 function getDisplayUnit(quantity: number, unit: Unit): string {
   return Math.abs(quantity) > 1 ? pluralUnits[unit] : unit;
 }
@@ -299,12 +325,23 @@ function isCloseTextMatch(inputValue: string, candidateValue: string): boolean {
 function getUnitFromToken(value: string): Unit | undefined {
   const unitKey = getUnitKey(value);
   const directUnit = unitAliases[unitKey];
+  const typoUnit = commonUnitTypos[unitKey];
 
   if (directUnit) {
     return directUnit;
   }
 
-  const closeUnit = Object.entries(unitAliases).find(([alias]) => isCloseTextMatch(unitKey, alias));
+  if (typoUnit) {
+    return typoUnit;
+  }
+
+  const closeUnit = Object.entries(unitAliases).find(([alias]) => {
+    if (unitKey.length < 5 || alias.length < 5) {
+      return false;
+    }
+
+    return isCloseTextMatch(unitKey, alias);
+  });
 
   return closeUnit?.[1];
 }
