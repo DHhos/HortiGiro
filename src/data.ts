@@ -45,7 +45,7 @@ export const suggestedProducts: Product[] = [
   { id: "catalogo-13", nome: "Acelga", unidadePadrao: "caixa", ativo: true },
   { id: "catalogo-14", nome: "Couve-manteiga", unidadePadrao: "maço", ativo: true },
   { id: "catalogo-15", nome: "Rabanete", unidadePadrao: "maço", ativo: true },
-  { id: "catalogo-16", nome: "Nabo", unidadePadrao: "caixa", ativo: true },
+  { id: "catalogo-16", nome: "Nabo", unidadePadrao: "maço", ativo: true },
   { id: "catalogo-17", nome: "Broto feijão", unidadePadrao: "bandeja", ativo: true },
   { id: "catalogo-18", nome: "Broto alfafa", unidadePadrao: "bandeja", ativo: true },
   { id: "catalogo-19", nome: "Cambuci", unidadePadrao: "caixa", ativo: true },
@@ -82,7 +82,7 @@ export const suggestedProducts: Product[] = [
   { id: "catalogo-50", nome: "Mamão", unidadePadrao: "caixa", ativo: true },
   { id: "catalogo-51", nome: "Melão", unidadePadrao: "caixa", ativo: true },
   { id: "catalogo-52", nome: "Manga", unidadePadrao: "caixa", ativo: true },
-  { id: "catalogo-53", nome: "Melancia", unidadePadrao: "caixa", ativo: true },
+  { id: "catalogo-53", nome: "Melancia", unidadePadrao: "unidade", ativo: true },
   { id: "catalogo-54", nome: "Alho", unidadePadrao: "saco", ativo: true },
   { id: "catalogo-55", nome: "Feijão", unidadePadrao: "saco", ativo: true },
   { id: "catalogo-56", nome: "Ponkan", unidadePadrao: "caixa", ativo: true },
@@ -148,6 +148,11 @@ export const suggestedProducts: Product[] = [
   { id: "catalogo-116", nome: "Cebola 20kg", unidadePadrao: "saco", ativo: true },
   { id: "catalogo-117", nome: "Cebola 25kg", unidadePadrao: "saco", ativo: true },
   { id: "catalogo-118", nome: "Laranja 25kg", unidadePadrao: "saco", ativo: true },
+  { id: "catalogo-119", nome: "Alho descascado", unidadePadrao: "kg", ativo: true },
+  { id: "catalogo-120", nome: "Tomate miúdo", unidadePadrao: "caixa", ativo: true },
+  { id: "catalogo-121", nome: "Pimentão vermelho", unidadePadrao: "caixa", ativo: true },
+  { id: "catalogo-122", nome: "Pimentão amarelo", unidadePadrao: "caixa", ativo: true },
+  { id: "catalogo-123", nome: "Uva niágara", unidadePadrao: "caixa", ativo: true },
 ];
 
 export const initialOrders: Order[] = [];

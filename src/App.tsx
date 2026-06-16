@@ -203,6 +203,11 @@ const commonUnitTypos: Record<string, Unit> = {
   caxia: "caixa",
   cxsx: "caixa",
   dusia: "dúzia",
+  kilo: "kg",
+  kilos: "kg",
+  kl: "kg",
+  quilo: "kg",
+  quilos: "kg",
   maccho: "maço",
   masso: "maço",
   massos: "maço",
@@ -213,6 +218,9 @@ const commonUnitTypos: Record<string, Unit> = {
   unid: "unidade",
   unidada: "unidade",
 };
+
+const halfQuantityTokens = new Set(["1/2", "meia", "meio", "metade"]);
+const productConnectorTokens = new Set(["a", "as", "da", "das", "de", "do", "dos", "o", "os"]);
 
 function getDisplayUnit(quantity: number, unit: Unit): string {
   return Math.abs(quantity) > 1 ? pluralUnits[unit] : unit;
@@ -265,7 +273,7 @@ function getUnitKey(value: string): string {
 }
 
 function getTokenKey(value: string): string {
-  return normalizeText(value).replace(/[^a-z0-9,.]/g, "");
+  return normalizeText(value).replace(/[^a-z0-9,./]/g, "");
 }
 
 function sortProductsByName(productList: Product[]): Product[] {
@@ -346,6 +354,33 @@ function getUnitFromToken(value: string): Unit | undefined {
   return closeUnit?.[1];
 }
 
+function getQuantityFromToken(value: string): number | undefined {
+  const tokenKey = getTokenKey(value.replace("½", "1/2"));
+
+  if (halfQuantityTokens.has(tokenKey)) {
+    return 0.5;
+  }
+
+  const fractionMatch = tokenKey.match(/^(\d+)\/(\d+)$/);
+
+  if (fractionMatch) {
+    const numerator = Number(fractionMatch[1]);
+    const denominator = Number(fractionMatch[2]);
+
+    return denominator > 0 ? numerator / denominator : undefined;
+  }
+
+  if (/^\d+(?:[,.]\d+)?$/.test(tokenKey)) {
+    return parseQuantity(tokenKey);
+  }
+
+  return undefined;
+}
+
+function isProductConnectorToken(value: string): boolean {
+  return productConnectorTokens.has(getProductNameKey(value));
+}
+
 function findProductByText(productText: string, productList: Product[]): Product | undefined {
   const productKey = getProductNameKey(productText);
 
@@ -367,24 +402,26 @@ function findProductByText(productText: string, productList: Product[]): Product
     return undefined;
   }
 
-  const partialMatches = productList.filter((product) => {
-    const currentKey = getProductNameKey(product.nome);
-    return currentKey.includes(productKey) || productKey.includes(currentKey);
-  });
+  const partialMatches = productList
+    .map((product) => ({
+      product,
+      key: getProductNameKey(product.nome),
+    }))
+    .filter(({ key }) => key.includes(productKey) || productKey.includes(key));
 
   if (partialMatches.length === 1) {
-    return partialMatches[0];
+    return partialMatches[0].product;
   }
 
   if (partialMatches.length > 1) {
     const sortedPartialMatches = [...partialMatches].sort(
-      (first, second) => getProductNameKey(second.nome).length - getProductNameKey(first.nome).length,
+      (first, second) => second.key.length - first.key.length,
     );
-    const firstMatchKey = getProductNameKey(sortedPartialMatches[0].nome);
-    const secondMatchKey = getProductNameKey(sortedPartialMatches[1].nome);
+    const firstMatchKey = sortedPartialMatches[0].key;
+    const secondMatchKey = sortedPartialMatches[1].key;
 
-    if (firstMatchKey.length > secondMatchKey.length) {
-      return sortedPartialMatches[0];
+    if (productKey.includes(firstMatchKey) && firstMatchKey.length > secondMatchKey.length) {
+      return sortedPartialMatches[0].product;
     }
   }
 
@@ -423,13 +460,19 @@ function isIgnoredQuickOrderLine(value: string): boolean {
 }
 
 function extractQuickOrderLineParts(value: string) {
-  const tokens = value.split(/\s+/).filter(Boolean);
-  const quantityIndex = tokens.findIndex((token) => /^\d+(?:[,.]\d+)?$/.test(getTokenKey(token)));
-  const quantidade = quantityIndex >= 0 ? parseQuantity(getTokenKey(tokens[quantityIndex])) : Number.NaN;
+  const preparedValue = value
+    .replace(/(\d+\/\d+)([a-zA-ZÀ-ÿ]+)/g, "$1 $2")
+    .replace(/(\d+(?:[,.]\d+)?)([a-zA-ZÀ-ÿ]+)/g, "$1 $2");
+  const tokens = preparedValue.split(/\s+/).filter(Boolean);
+  const quantityValues = tokens.map((token) => getQuantityFromToken(token));
+  const quantityIndex = quantityValues.findIndex((parsedQuantity) => parsedQuantity !== undefined);
+  const quantidade = quantityIndex >= 0 ? quantityValues[quantityIndex] ?? Number.NaN : Number.NaN;
   const tokensWithoutQuantity = tokens.filter((_, index) => index !== quantityIndex);
   const unitIndex = tokensWithoutQuantity.findIndex((token) => Boolean(getUnitFromToken(token)));
   const unidade = unitIndex >= 0 ? getUnitFromToken(tokensWithoutQuantity[unitIndex]) : undefined;
-  const productTokens = tokensWithoutQuantity.filter((_, index) => index !== unitIndex);
+  const productTokens = tokensWithoutQuantity
+    .filter((_, index) => index !== unitIndex)
+    .filter((token) => !isProductConnectorToken(token));
   const produtoTexto = productTokens.join(" ").replace(/^[-:]+/, "").trim();
 
   return {
