@@ -2,6 +2,7 @@ export type OrderStatus = "aberto" | "entregue" | "cancelado";
 
 export type Unit =
   | "caixa"
+  | "caixa com 12 un"
   | "unidade"
   | "maço"
   | "bandeja"

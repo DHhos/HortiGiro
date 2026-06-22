@@ -121,6 +121,42 @@ const FIXED_APP_NAME = initialSettings.appName;
 const FIXED_PRIMARY_COLOR = initialSettings.primaryColor;
 const FIXED_PDF_FOOTER = initialSettings.pdfFooter;
 const TEMP_DOWNLOAD_URL_TTL = 10 * 60 * 1000;
+const PRODUCT_CATALOG_REVISION = "2026-06-22-produtos-hortigiro-cadastros-por-unidade";
+const PRODUCT_CATALOG_REVISION_STORAGE_KEY = "hortigiro.productCatalogRevision";
+const productCatalogRemovedNames = [
+  "Abacaxi",
+  "Abacaxi T8",
+  "Abacaxi T12",
+  "Abobrinha",
+  "Alface",
+  "Batata",
+  "Batata 20kg",
+  "Batata Monalisa",
+  "Batata salsa amarela",
+  "Cebola",
+  "Cebola 20kg",
+  "Cebola 25kg",
+  "Feijão",
+  "Feijão carioca",
+  "Feijão preto",
+  "Laranja",
+  "Laranja 25kg",
+  "Limão",
+  "Mandioca",
+  "Ovos",
+  "Pepino salada",
+  "Pimentão",
+  "Acelga",
+  "Maçã sacolão",
+  "Manga",
+  "Maracujá",
+  "Melão",
+  "Repolho",
+  "Repolho roxo",
+  "Tomate cereja",
+  "Uva crimson",
+  "Uva thompson",
+];
 
 const emptyClientForm: ClientForm = {
   nome: "",
@@ -137,6 +173,7 @@ const emptyProductForm: ProductForm = {
 
 const pluralUnits: Record<Unit, string> = {
   caixa: "caixas",
+  "caixa com 12 un": "caixas com 12 un",
   unidade: "unidades",
   maço: "maços",
   bandeja: "bandejas",
@@ -153,13 +190,22 @@ const unitAliases: Record<string, Unit> = {
   bandeja: "bandeja",
   bandejas: "bandeja",
   caixa: "caixa",
+  caixa12: "caixa com 12 un",
+  caixa12un: "caixa com 12 un",
+  caixacom12un: "caixa com 12 un",
   caixas: "caixa",
+  caixas12: "caixa com 12 un",
+  caixas12un: "caixa com 12 un",
   cartela: "cartela",
   cartelas: "cartela",
   ct: "cartela",
   cts: "cartela",
   cx: "caixa",
+  cx12: "caixa com 12 un",
+  cx12un: "caixa com 12 un",
   cxs: "caixa",
+  cxs12: "caixa com 12 un",
+  cxs12un: "caixa com 12 un",
   duzia: "dúzia",
   duzias: "dúzia",
   dz: "dúzia",
@@ -274,6 +320,78 @@ function getUnitKey(value: string): string {
 
 function getTokenKey(value: string): string {
   return normalizeText(value).replace(/[^a-z0-9,./]/g, "");
+}
+
+const productCatalogRemovedNameKeys = new Set(productCatalogRemovedNames.map((name) => getProductNameKey(name)));
+const suggestedProductByNameKey = new Map(suggestedProducts.map((product) => [getProductNameKey(product.nome), product]));
+
+function sanitizeProduct(product: Product): Product {
+  const { unidadesCompra: _legacyUnits, ...sanitizedProduct } = product as Product & {
+    unidadesCompra?: Unit[];
+  };
+
+  return sanitizedProduct;
+}
+
+function getCatalogProductPatch(product: Product, catalogProduct: Product): Product {
+  return {
+    ...sanitizeProduct(product),
+    nome: catalogProduct.nome,
+    unidadePadrao: catalogProduct.unidadePadrao,
+  };
+}
+
+function shouldAddMissingCatalogProducts(productList: Product[]): boolean {
+  if (productList.length === 0) {
+    return false;
+  }
+
+  const catalogLikeProducts = productList.filter((product) => {
+    const productKey = getProductNameKey(product.nome);
+    return (
+      product.id.startsWith("produto-sugerido-") ||
+      suggestedProductByNameKey.has(productKey) ||
+      productCatalogRemovedNameKeys.has(productKey)
+    );
+  });
+
+  return productList.some((product) => product.id.startsWith("produto-sugerido-")) || catalogLikeProducts.length >= 20;
+}
+
+function applyProductCatalogRevision(productList: Product[]): Product[] {
+  const shouldAddMissingProducts = shouldAddMissingCatalogProducts(productList);
+  const revisedProducts = productList.reduce<Product[]>((productsToKeep, product) => {
+    const productKey = getProductNameKey(product.nome);
+    const catalogProduct = suggestedProductByNameKey.get(productKey);
+
+    if (productCatalogRemovedNameKeys.has(productKey)) {
+      return productsToKeep;
+    }
+
+    if (catalogProduct) {
+      productsToKeep.push(getCatalogProductPatch(product, catalogProduct));
+      return productsToKeep;
+    }
+
+    productsToKeep.push(sanitizeProduct(product));
+    return productsToKeep;
+  }, []);
+
+  if (shouldAddMissingProducts) {
+    const currentProductKeys = new Set(revisedProducts.map((product) => getProductNameKey(product.nome)));
+    const importedAt = Date.now();
+    const productsToAdd = suggestedProducts
+      .filter((product) => !currentProductKeys.has(getProductNameKey(product.nome)))
+      .map((product, index) => ({
+        ...product,
+        id: `produto-sugerido-revisao-${importedAt}-${index}`,
+        ativo: true,
+      }));
+
+    revisedProducts.push(...productsToAdd);
+  }
+
+  return sortProductsByName(revisedProducts);
 }
 
 function sortProductsByName(productList: Product[]): Product[] {
@@ -443,6 +561,19 @@ function findProductByText(productText: string, productList: Product[]): Product
     : undefined;
 }
 
+function findProductByTextAndUnit(
+  productText: string,
+  productList: Product[],
+  unit: Unit | undefined,
+): Product | undefined {
+  if (!unit) {
+    return findProductByText(productText, productList);
+  }
+
+  const unitProducts = productList.filter((product) => product.unidadePadrao === unit);
+  return findProductByText(productText, unitProducts) ?? findProductByText(productText, productList);
+}
+
 function isIgnoredQuickOrderLine(value: string): boolean {
   const key = getProductNameKey(value);
 
@@ -515,8 +646,9 @@ function parseQuickOrderText(
       const overrideProduct = productOverrides[id]
         ? productList.find((product) => product.id === productOverrides[id])
         : undefined;
-      const matchedProduct = overrideProduct ?? findProductByText(produtoTexto, productList);
-      const unidade = matchedProduct?.unidadePadrao ?? unitOverrides[id] ?? parsedUnit ?? "caixa";
+      const requestedUnit = unitOverrides[id] ?? parsedUnit;
+      const matchedProduct = overrideProduct ?? findProductByTextAndUnit(produtoTexto, productList, requestedUnit);
+      const unidade = matchedProduct?.unidadePadrao ?? requestedUnit ?? "caixa";
 
       if (!Number.isFinite(quantidade) || quantidade <= 0 || !produtoTexto) {
         lines.push({
@@ -757,6 +889,10 @@ function App() {
     () => sortProductsByName(products.filter((product) => product.ativo)),
     [products],
   );
+  const selectedProduct = useMemo(
+    () => activeProducts.find((product) => product.id === selectedProductId),
+    [activeProducts, selectedProductId],
+  );
 
   const selectedRoute = useMemo(
     () => routes.find((route) => route.id === selectedRouteId) ?? routes[0],
@@ -794,6 +930,19 @@ function App() {
       setSelectedProductId(activeProducts[0].id);
     }
   }, [activeProducts, selectedProductId]);
+
+  useEffect(() => {
+    if (localStorage.getItem(PRODUCT_CATALOG_REVISION_STORAGE_KEY) === PRODUCT_CATALOG_REVISION) {
+      return;
+    }
+
+    setProducts((current) => {
+      const revisedProducts = applyProductCatalogRevision(current);
+
+      return JSON.stringify(current) === JSON.stringify(revisedProducts) ? current : revisedProducts;
+    });
+    localStorage.setItem(PRODUCT_CATALOG_REVISION_STORAGE_KEY, PRODUCT_CATALOG_REVISION);
+  }, [setProducts]);
 
   const clientById = useMemo(
     () => new Map(clients.map((client) => [client.id, client])),
@@ -1041,7 +1190,6 @@ function App() {
   }
 
   function addDraftItem() {
-    const selectedProduct = activeProducts.find((product) => product.id === selectedProductId);
     const parsedQuantity = parseQuantity(quantity);
 
     if (!selectedProduct || !Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
@@ -1492,9 +1640,10 @@ function App() {
         });
         setRoutes(payload.routes);
         setClients(sortClientsByName(payload.clients));
-        setProducts(sortProductsByName(payload.products));
+        setProducts(applyProductCatalogRevision(payload.products));
         setOrders(payload.orders);
         setCheckedItems(payload.checkedItems ?? {});
+        localStorage.setItem(PRODUCT_CATALOG_REVISION_STORAGE_KEY, PRODUCT_CATALOG_REVISION);
         setSelectedRouteId(payload.routes.find((route) => route.ativo)?.id ?? DEFAULT_ROUTE_ID);
         setSelectedOrderId(null);
         setEditingOrderId(null);
@@ -2172,42 +2321,46 @@ function App() {
 
                 {quickOrderLines.length > 0 ? (
                   <div className="quick-order-preview" aria-label="Prévia do pedido rápido">
-                    {quickOrderLines.map((line) => (
-                      <article className={`quick-order-row ${line.status}`} key={line.id}>
-                        <div className="quick-order-read">
-                          <strong>
-                            {line.quantidade ? formatQuantityWithUnit(line.quantidade, line.unidade) : "Revisar"}
-                          </strong>
-                          <span>{line.produtoTexto || line.raw}</span>
-                        </div>
-                        <div className="quick-order-controls">
-                          <select
-                            value={line.selectedProductId}
-                            onChange={(event) => updateQuickOrderProduct(line.id, event.target.value)}
-                            aria-label={`Produto para ${line.produtoTexto || line.raw}`}
-                          >
-                            <option value="">Selecionar produto</option>
-                            {activeProducts.map((product) => (
-                              <option value={product.id} key={product.id}>
-                                {product.nome}
-                              </option>
-                            ))}
-                          </select>
-                          <select
-                            value={line.unidade}
-                            onChange={(event) => updateQuickOrderUnit(line.id, event.target.value as Unit)}
-                            aria-label={`Unidade para ${line.produtoTexto || line.raw}`}
-                            disabled={Boolean(line.selectedProductId)}
-                          >
-                            {units.map((unit) => (
-                              <option value={unit} key={unit}>
-                                {unit}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </article>
-                    ))}
+                    {quickOrderLines.map((line) => {
+                      const lineProduct = activeProducts.find((product) => product.id === line.selectedProductId);
+
+                      return (
+                        <article className={`quick-order-row ${line.status}`} key={line.id}>
+                          <div className="quick-order-read">
+                            <strong>
+                              {line.quantidade ? formatQuantityWithUnit(line.quantidade, line.unidade) : "Revisar"}
+                            </strong>
+                            <span>{line.produtoTexto || line.raw}</span>
+                          </div>
+                          <div className="quick-order-controls">
+                            <select
+                              value={line.selectedProductId}
+                              onChange={(event) => updateQuickOrderProduct(line.id, event.target.value)}
+                              aria-label={`Produto para ${line.produtoTexto || line.raw}`}
+                            >
+                              <option value="">Selecionar produto</option>
+                              {activeProducts.map((product) => (
+                                <option value={product.id} key={product.id}>
+                                  {product.nome}
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              value={line.unidade}
+                              onChange={(event) => updateQuickOrderUnit(line.id, event.target.value as Unit)}
+                              aria-label={`Unidade para ${line.produtoTexto || line.raw}`}
+                              disabled={Boolean(lineProduct)}
+                            >
+                              {(lineProduct ? [lineProduct.unidadePadrao] : units).map((unit) => (
+                                <option value={unit} key={unit}>
+                                  {unit}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </article>
+                      );
+                    })}
                   </div>
                 ) : null}
 
