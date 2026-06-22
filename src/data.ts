@@ -40,7 +40,7 @@ export const suggestedProducts: Product[] = [
   { id: "catalogo-7", nome: "Abacaxi Pérola T12", unidadePadrao: "caixa", ativo: true },
   { id: "catalogo-8", nome: "Abacaxi Pérola T15", unidadePadrao: "caixa", ativo: true },
   { id: "catalogo-9", nome: "Abacaxi Pérola T18", unidadePadrao: "caixa", ativo: true },
-  { id: "catalogo-10", nome: "Abóbora", unidadePadrao: "unidade", ativo: true },
+  { id: "catalogo-10", nome: "Abóbora pescoço", unidadePadrao: "unidade", ativo: true },
   { id: "catalogo-11", nome: "Abóbora cabotiá", unidadePadrao: "saco", ativo: true },
   { id: "catalogo-12", nome: "Abóbora moranga", unidadePadrao: "saco", ativo: true },
   { id: "catalogo-13", nome: "Abobrinha seca", unidadePadrao: "saco", ativo: true },

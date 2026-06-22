@@ -121,7 +121,7 @@ const FIXED_APP_NAME = initialSettings.appName;
 const FIXED_PRIMARY_COLOR = initialSettings.primaryColor;
 const FIXED_PDF_FOOTER = initialSettings.pdfFooter;
 const TEMP_DOWNLOAD_URL_TTL = 10 * 60 * 1000;
-const PRODUCT_CATALOG_REVISION = "2026-06-22-produtos-hortigiro-cadastros-por-unidade";
+const PRODUCT_CATALOG_REVISION = "2026-06-22-produtos-hortigiro-abobora-pescoco";
 const PRODUCT_CATALOG_REVISION_STORAGE_KEY = "hortigiro.productCatalogRevision";
 const productCatalogRemovedNames = [
   "Abacaxi",
@@ -157,6 +157,9 @@ const productCatalogRemovedNames = [
   "Uva crimson",
   "Uva thompson",
 ];
+const productCatalogRenamedNames: Record<string, string> = {
+  "Abóbora": "Abóbora pescoço",
+};
 
 const emptyClientForm: ClientForm = {
   nome: "",
@@ -324,6 +327,12 @@ function getTokenKey(value: string): string {
 
 const productCatalogRemovedNameKeys = new Set(productCatalogRemovedNames.map((name) => getProductNameKey(name)));
 const suggestedProductByNameKey = new Map(suggestedProducts.map((product) => [getProductNameKey(product.nome), product]));
+const productCatalogRenamedNameKeys = new Map(
+  Object.entries(productCatalogRenamedNames).map(([currentName, nextName]) => [
+    getProductNameKey(currentName),
+    getProductNameKey(nextName),
+  ]),
+);
 
 function sanitizeProduct(product: Product): Product {
   const { unidadesCompra: _legacyUnits, ...sanitizedProduct } = product as Product & {
@@ -351,6 +360,7 @@ function shouldAddMissingCatalogProducts(productList: Product[]): boolean {
     return (
       product.id.startsWith("produto-sugerido-") ||
       suggestedProductByNameKey.has(productKey) ||
+      productCatalogRenamedNameKeys.has(productKey) ||
       productCatalogRemovedNameKeys.has(productKey)
     );
   });
@@ -362,7 +372,14 @@ function applyProductCatalogRevision(productList: Product[]): Product[] {
   const shouldAddMissingProducts = shouldAddMissingCatalogProducts(productList);
   const revisedProducts = productList.reduce<Product[]>((productsToKeep, product) => {
     const productKey = getProductNameKey(product.nome);
+    const renamedProductKey = productCatalogRenamedNameKeys.get(productKey);
+    const renamedCatalogProduct = renamedProductKey ? suggestedProductByNameKey.get(renamedProductKey) : undefined;
     const catalogProduct = suggestedProductByNameKey.get(productKey);
+
+    if (renamedCatalogProduct) {
+      productsToKeep.push(getCatalogProductPatch(product, renamedCatalogProduct));
+      return productsToKeep;
+    }
 
     if (productCatalogRemovedNameKeys.has(productKey)) {
       return productsToKeep;
