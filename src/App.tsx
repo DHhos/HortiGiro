@@ -121,7 +121,7 @@ const FIXED_APP_NAME = initialSettings.appName;
 const FIXED_PRIMARY_COLOR = initialSettings.primaryColor;
 const FIXED_PDF_FOOTER = initialSettings.pdfFooter;
 const TEMP_DOWNLOAD_URL_TTL = 10 * 60 * 1000;
-const PRODUCT_CATALOG_REVISION = "2026-06-22-produtos-hortigiro-abobora-pescoco";
+const PRODUCT_CATALOG_REVISION = "2026-06-22-produtos-hortigiro-mamao-caixa-unidade";
 const PRODUCT_CATALOG_REVISION_STORAGE_KEY = "hortigiro.productCatalogRevision";
 const productCatalogRemovedNames = [
   "Abacaxi",
@@ -159,6 +159,7 @@ const productCatalogRemovedNames = [
 ];
 const productCatalogRenamedNames: Record<string, string> = {
   "Abóbora": "Abóbora pescoço",
+  "Mamão": "Mamão caixa",
 };
 
 const emptyClientForm: ClientForm = {
