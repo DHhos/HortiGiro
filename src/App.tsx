@@ -122,7 +122,7 @@ const FIXED_APP_NAME = initialSettings.appName;
 const FIXED_PRIMARY_COLOR = initialSettings.primaryColor;
 const FIXED_PDF_FOOTER = initialSettings.pdfFooter;
 const TEMP_DOWNLOAD_URL_TTL = 10 * 60 * 1000;
-const PRODUCT_CATALOG_REVISION = "2026-06-22-produtos-hortigiro-mamao-caixa-unidade";
+const PRODUCT_CATALOG_REVISION = "2026-06-24-produtos-sem-genericos";
 const PRODUCT_CATALOG_REVISION_STORAGE_KEY = "hortigiro.productCatalogRevision";
 const productCatalogRemovedNames = [
   "Abacaxi",
@@ -130,6 +130,7 @@ const productCatalogRemovedNames = [
   "Abacaxi T12",
   "Abobrinha",
   "Alface",
+  "Banana",
   "Batata",
   "Batata 20kg",
   "Batata Monalisa",
@@ -137,6 +138,7 @@ const productCatalogRemovedNames = [
   "Cebola",
   "Cebola 20kg",
   "Cebola 25kg",
+  "Cogumelos",
   "Feijão",
   "Feijão carioca",
   "Feijão preto",
@@ -154,13 +156,17 @@ const productCatalogRemovedNames = [
   "Melão",
   "Repolho",
   "Repolho roxo",
+  "Tomate",
   "Tomate cereja",
+  "Uva",
   "Uva crimson",
   "Uva thompson",
 ];
 const productCatalogRenamedNames: Record<string, string> = {
   "Abóbora": "Abóbora pescoço",
+  "Champignon": "Cogumelo Champignon",
   "Mamão": "Mamão caixa",
+  "Shimeji": "Cogumelo Shimeji",
 };
 
 const emptyClientForm: ClientForm = {
