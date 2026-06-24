@@ -847,14 +847,29 @@ textarea:focus {
 }
 
 .quick-order-row.needs-product .quick-order-read strong,
+.quick-order-row.unit-conflict .quick-order-read strong,
 .quick-order-row.invalid .quick-order-read strong {
   color: var(--warning-text);
+}
+
+.quick-order-warning {
+  display: block;
+  margin-top: 6px;
+  color: var(--warning-text);
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.4;
 }
 
 .quick-order-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 104px;
   gap: 8px;
+}
+
+.quick-order-confirm-unit {
+  grid-column: 1 / -1;
+  justify-self: end;
 }
 
 .search-field {

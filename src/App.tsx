@@ -97,9 +97,10 @@ interface QuickOrderLine {
   raw: string;
   quantidade: number | null;
   unidade: Unit;
+  informedUnit: Unit | null;
   produtoTexto: string;
   selectedProductId: string;
-  status: "ready" | "needs-product" | "invalid";
+  status: "ready" | "needs-product" | "unit-conflict" | "invalid";
 }
 
 interface BackupPayload {
@@ -608,6 +609,10 @@ function isIgnoredQuickOrderLine(value: string): boolean {
   );
 }
 
+function getQuickOrderLineId(index: number, value: string): string {
+  return `${index}-${getProductNameKey(value) || "linha"}`;
+}
+
 function extractQuickOrderLineParts(value: string) {
   const preparedValue = value
     .replace(/(\d+\/\d+)([a-zA-ZÀ-ÿ]+)/g, "$1 $2")
@@ -645,15 +650,18 @@ function parseQuickOrderText(
         return lines;
       }
 
-      const id = `${index}-${getProductNameKey(normalizedLine) || "linha"}`;
+      const id = getQuickOrderLineId(index, normalizedLine);
       const { quantidade, unidade: parsedUnit, produtoTexto } = extractQuickOrderLineParts(normalizedLine);
 
       if (!Number.isFinite(quantidade)) {
+        const informedUnit = unitOverrides[id] ?? parsedUnit ?? null;
+
         lines.push({
           id,
           raw,
           quantidade: null,
-          unidade: unitOverrides[id] ?? "caixa",
+          unidade: informedUnit ?? "caixa",
+          informedUnit,
           produtoTexto: normalizedLine,
           selectedProductId: productOverrides[id] ?? "",
           status: "invalid",
@@ -667,6 +675,9 @@ function parseQuickOrderText(
       const requestedUnit = unitOverrides[id] ?? parsedUnit;
       const matchedProduct = overrideProduct ?? findProductByTextAndUnit(produtoTexto, productList, requestedUnit);
       const unidade = matchedProduct?.unidadePadrao ?? requestedUnit ?? "caixa";
+      const hasUnitConflict = Boolean(
+        matchedProduct && requestedUnit && requestedUnit !== matchedProduct.unidadePadrao,
+      );
 
       if (!Number.isFinite(quantidade) || quantidade <= 0 || !produtoTexto) {
         lines.push({
@@ -674,6 +685,7 @@ function parseQuickOrderText(
           raw,
           quantidade: Number.isFinite(quantidade) ? quantidade : null,
           unidade,
+          informedUnit: requestedUnit ?? null,
           produtoTexto,
           selectedProductId: matchedProduct?.id ?? "",
           status: "invalid",
@@ -686,9 +698,10 @@ function parseQuickOrderText(
         raw,
         quantidade,
         unidade,
+        informedUnit: requestedUnit ?? null,
         produtoTexto,
         selectedProductId: matchedProduct?.id ?? "",
-        status: matchedProduct ? "ready" : "needs-product",
+        status: matchedProduct ? (hasUnitConflict ? "unit-conflict" : "ready") : "needs-product",
       });
       return lines;
     }, []);
@@ -1257,8 +1270,11 @@ function App() {
   }
 
   function addQuickOrderItems() {
-    const itemsToAdd = quickOrderLines
-      .filter((line) => line.status === "ready" && line.quantidade && line.selectedProductId)
+    const readyLines = quickOrderLines.filter(
+      (line) => line.status === "ready" && line.quantidade && line.selectedProductId,
+    );
+    const remainingLines = quickOrderLines.filter((line) => line.status !== "ready");
+    const itemsToAdd = readyLines
       .map((line, index) => {
         const product = activeProducts.find((currentProduct) => currentProduct.id === line.selectedProductId);
 
@@ -1285,10 +1301,42 @@ function App() {
     setDraftItems((current) =>
       mergeDraftItems(normalizeDraftItemsToProductDefaults([...current.map((item) => ({ ...item })), ...itemsToAdd])),
     );
+
+    if (remainingLines.length > 0) {
+      const nextProductOverrides: Record<string, string> = {};
+      const nextUnitOverrides: Record<string, Unit> = {};
+
+      remainingLines.forEach((line, index) => {
+        const nextId = getQuickOrderLineId(index, line.raw);
+        const productOverride = quickOrderProductOverrides[line.id];
+        const unitOverride = quickOrderUnitOverrides[line.id];
+
+        if (productOverride) {
+          nextProductOverrides[nextId] = productOverride;
+        }
+
+        if (unitOverride) {
+          nextUnitOverrides[nextId] = unitOverride;
+        }
+      });
+
+      setQuickOrderText(remainingLines.map((line) => line.raw).join("\n"));
+      setQuickOrderProductOverrides(nextProductOverrides);
+      setQuickOrderUnitOverrides(nextUnitOverrides);
+      setQuickOrderMessage(
+        `${itemsToAdd.length} ${itemsToAdd.length === 1 ? "item adicionado" : "itens adicionados"}. ` +
+          `${remainingLines.length} ${remainingLines.length === 1 ? "linha continua" : "linhas continuam"} para revisão.`,
+      );
+      setQuickOrderOpen(true);
+      return;
+    }
+
     setQuickOrderText("");
     setQuickOrderProductOverrides({});
     setQuickOrderUnitOverrides({});
-    setQuickOrderMessage(`${itemsToAdd.length} itens adicionados.`);
+    setQuickOrderMessage(
+      `${itemsToAdd.length} ${itemsToAdd.length === 1 ? "item adicionado" : "itens adicionados"}.`,
+    );
     setQuickOrderOpen(false);
   }
 
@@ -2349,6 +2397,12 @@ function App() {
                               {line.quantidade ? formatQuantityWithUnit(line.quantidade, line.unidade) : "Revisar"}
                             </strong>
                             <span>{line.produtoTexto || line.raw}</span>
+                            {line.status === "unit-conflict" && lineProduct && line.informedUnit ? (
+                              <small className="quick-order-warning">
+                                A lista informou {line.informedUnit}, mas {lineProduct.nome} está cadastrado como{" "}
+                                {lineProduct.unidadePadrao}.
+                              </small>
+                            ) : null}
                           </div>
                           <div className="quick-order-controls">
                             <select
@@ -2375,6 +2429,16 @@ function App() {
                                 </option>
                               ))}
                             </select>
+                            {line.status === "unit-conflict" && lineProduct ? (
+                              <button
+                                className="secondary-button compact quick-order-confirm-unit"
+                                type="button"
+                                onClick={() => updateQuickOrderUnit(line.id, lineProduct.unidadePadrao)}
+                              >
+                                <CheckCircle2 size={16} aria-hidden="true" />
+                                Usar {lineProduct.unidadePadrao}
+                              </button>
+                            ) : null}
                           </div>
                         </article>
                       );
