@@ -90,6 +90,22 @@ interface ClientForm {
 interface ProductForm {
   nome: string;
   unidadePadrao: Unit;
+  unidadesPedido: Unit[];
+  unidadeCompra: Unit;
+}
+
+interface PurchasePlanEntry {
+  quantidade: string;
+  unidade: Unit;
+}
+
+interface ProductDemand {
+  produtoId: string;
+  produtoNome: string;
+  quantities: Array<{
+    quantidade: number;
+    unidade: Unit;
+  }>;
 }
 
 interface QuickOrderLine {
@@ -114,6 +130,7 @@ interface OrderDraftSnapshot {
   draftItems: DraftItem[];
   productSearch: string;
   selectedProductId: string;
+  selectedOrderUnit: Unit;
   quantity: string;
   quickOrderOpen: boolean;
   quickOrderText: string;
@@ -130,6 +147,7 @@ interface BackupPayload {
   products: Product[];
   orders: Order[];
   checkedItems: Record<string, boolean>;
+  purchasePlans?: Record<string, PurchasePlanEntry>;
 }
 
 type PdfScope = { type: "all" } | { type: "route"; routeId: string };
@@ -141,7 +159,7 @@ const FIXED_PRIMARY_COLOR = initialSettings.primaryColor;
 const FIXED_PDF_FOOTER = initialSettings.pdfFooter;
 const TEMP_DOWNLOAD_URL_TTL = 10 * 60 * 1000;
 const ORDER_DRAFT_STORAGE_KEY = "hortigiro.orderDraft";
-const PRODUCT_CATALOG_REVISION = "2026-06-24-produtos-sem-genericos";
+const PRODUCT_CATALOG_REVISION = "2026-06-25-unidades-pedido-compra";
 const PRODUCT_CATALOG_REVISION_STORAGE_KEY = "hortigiro.productCatalogRevision";
 const productCatalogRemovedNames = [
   "Abacaxi",
@@ -199,6 +217,8 @@ const emptyClientForm: ClientForm = {
 const emptyProductForm: ProductForm = {
   nome: "",
   unidadePadrao: "caixa",
+  unidadesPedido: ["caixa"],
+  unidadeCompra: "caixa",
 };
 
 function loadOrderDraftSnapshot(): OrderDraftSnapshot | null {
@@ -382,11 +402,31 @@ const productCatalogRenamedNameKeys = new Map(
 );
 
 function sanitizeProduct(product: Product): Product {
-  const { unidadesCompra: _legacyUnits, ...sanitizedProduct } = product as Product & {
+  const { unidadesCompra: legacyUnits, ...sanitizedProduct } = product as Product & {
     unidadesCompra?: Unit[];
   };
+  const unidadesPedido =
+    Array.isArray(product.unidadesPedido) && product.unidadesPedido.length > 0
+      ? product.unidadesPedido
+      : Array.isArray(legacyUnits) && legacyUnits.length > 0
+        ? legacyUnits
+        : [product.unidadePadrao];
 
-  return sanitizedProduct;
+  return {
+    ...sanitizedProduct,
+    unidadesPedido: Array.from(new Set([product.unidadePadrao, ...unidadesPedido])),
+    unidadeCompra: product.unidadeCompra ?? product.unidadePadrao,
+  };
+}
+
+function getProductOrderUnits(product: Product): Unit[] {
+  return Array.isArray(product.unidadesPedido) && product.unidadesPedido.length > 0
+    ? Array.from(new Set([product.unidadePadrao, ...product.unidadesPedido]))
+    : [product.unidadePadrao];
+}
+
+function getProductPurchaseUnit(product: Product): Unit {
+  return product.unidadeCompra ?? product.unidadePadrao;
 }
 
 function getCatalogProductPatch(product: Product, catalogProduct: Product): Product {
@@ -394,6 +434,8 @@ function getCatalogProductPatch(product: Product, catalogProduct: Product): Prod
     ...sanitizeProduct(product),
     nome: catalogProduct.nome,
     unidadePadrao: catalogProduct.unidadePadrao,
+    unidadesPedido: catalogProduct.unidadesPedido,
+    unidadeCompra: catalogProduct.unidadeCompra,
   };
 }
 
@@ -634,7 +676,7 @@ function findProductByTextAndUnit(
     return findProductByText(productText, productList);
   }
 
-  const unitProducts = productList.filter((product) => product.unidadePadrao === unit);
+  const unitProducts = productList.filter((product) => getProductOrderUnits(product).includes(unit));
   return findProductByText(productText, unitProducts) ?? findProductByText(productText, productList);
 }
 
@@ -719,9 +761,15 @@ function parseQuickOrderText(
         : undefined;
       const requestedUnit = unitOverrides[id] ?? parsedUnit;
       const matchedProduct = overrideProduct ?? findProductByTextAndUnit(produtoTexto, productList, requestedUnit);
-      const unidade = matchedProduct?.unidadePadrao ?? requestedUnit ?? "caixa";
+      const requestedUnitIsAccepted = Boolean(
+        matchedProduct && requestedUnit && getProductOrderUnits(matchedProduct).includes(requestedUnit),
+      );
+      const unidade =
+        matchedProduct && requestedUnitIsAccepted
+          ? requestedUnit!
+          : matchedProduct?.unidadePadrao ?? requestedUnit ?? "caixa";
       const hasUnitConflict = Boolean(
-        matchedProduct && requestedUnit && requestedUnit !== matchedProduct.unidadePadrao,
+        matchedProduct && requestedUnit && !getProductOrderUnits(matchedProduct).includes(requestedUnit),
       );
 
       if (!Number.isFinite(quantidade) || quantidade <= 0 || !produtoTexto) {
@@ -876,7 +924,7 @@ function buildConsolidatedItems(orders: Order[], productById: ReadonlyMap<string
       order.itens.forEach((item) => {
         const product = productById.get(item.produtoId);
         const productName = product?.nome ?? item.produtoNome;
-        const unit = product?.unidadePadrao ?? item.unidade;
+        const unit = item.unidade;
         const key = `${item.produtoId}:${unit}`;
         const current = grouped.get(key);
 
@@ -902,6 +950,46 @@ function buildConsolidatedItems(orders: Order[], productById: ReadonlyMap<string
   );
 }
 
+function buildProductDemands(
+  orders: Order[],
+  productById: ReadonlyMap<string, Product>,
+): ProductDemand[] {
+  const grouped = new Map<string, ProductDemand>();
+
+  buildConsolidatedItems(orders, productById).forEach((item) => {
+    const current = grouped.get(item.produtoId);
+
+    if (current) {
+      current.quantities.push({
+        quantidade: item.quantidade,
+        unidade: item.unidade,
+      });
+      return;
+    }
+
+    grouped.set(item.produtoId, {
+      produtoId: item.produtoId,
+      produtoNome: item.produtoNome,
+      quantities: [
+        {
+          quantidade: item.quantidade,
+          unidade: item.unidade,
+        },
+      ],
+    });
+  });
+
+  return Array.from(grouped.values()).sort((first, second) =>
+    first.produtoNome.localeCompare(second.produtoNome, "pt-BR"),
+  );
+}
+
+function formatProductDemand(demand: ProductDemand): string {
+  return demand.quantities
+    .map((quantity) => formatQuantityWithUnit(quantity.quantidade, quantity.unidade))
+    .join(" + ");
+}
+
 function App() {
   useAppNavigationGuard();
 
@@ -913,6 +1001,10 @@ function App() {
   const [orders, setOrders] = usePersistentState<Order[]>("hortigiro.orders", initialOrders);
   const [checkedItems, setCheckedItems] = usePersistentState<Record<string, boolean>>(
     "hortigiro.checkedItems",
+    {},
+  );
+  const [purchasePlans, setPurchasePlans] = usePersistentState<Record<string, PurchasePlanEntry>>(
+    "hortigiro.purchasePlans",
     {},
   );
   const [theme, setTheme] = usePersistentState<ThemeMode>("hortigiro.theme", "dark");
@@ -941,6 +1033,9 @@ function App() {
   const [productSearch, setProductSearch] = useState(restoredOrderDraft?.productSearch ?? "");
   const [selectedProductId, setSelectedProductId] = useState(
     restoredOrderDraft?.selectedProductId ?? initialProducts[0]?.id ?? "",
+  );
+  const [selectedOrderUnit, setSelectedOrderUnit] = useState<Unit>(
+    restoredOrderDraft?.selectedOrderUnit ?? "caixa",
   );
   const [quantity, setQuantity] = useState(restoredOrderDraft?.quantity ?? "1");
   const [quickOrderOpen, setQuickOrderOpen] = useState(restoredOrderDraft?.quickOrderOpen ?? false);
@@ -1029,6 +1124,7 @@ function App() {
       draftItems,
       productSearch,
       selectedProductId,
+      selectedOrderUnit,
       quantity,
       quickOrderOpen,
       quickOrderText,
@@ -1051,6 +1147,7 @@ function App() {
     quickOrderText,
     quickOrderUnitOverrides,
     selectedProductId,
+    selectedOrderUnit,
     selectedRouteId,
   ]);
 
@@ -1079,6 +1176,16 @@ function App() {
       setSelectedProductId(activeProducts[0].id);
     }
   }, [activeProducts, selectedProductId]);
+
+  useEffect(() => {
+    if (!selectedProduct) {
+      return;
+    }
+
+    if (!getProductOrderUnits(selectedProduct).includes(selectedOrderUnit)) {
+      setSelectedOrderUnit(selectedProduct.unidadePadrao);
+    }
+  }, [selectedOrderUnit, selectedProduct]);
 
   useEffect(() => {
     if (localStorage.getItem(PRODUCT_CATALOG_REVISION_STORAGE_KEY) === PRODUCT_CATALOG_REVISION) {
@@ -1178,6 +1285,10 @@ function App() {
     () => buildConsolidatedItems(ordersForSelectedDate, productById),
     [ordersForSelectedDate, productById],
   );
+  const allProductDemands = useMemo(
+    () => buildProductDemands(ordersForSelectedDate, productById),
+    [ordersForSelectedDate, productById],
+  );
 
   const selectedOrder = selectedOrderId ? orders.find((order) => order.id === selectedOrderId) : undefined;
 
@@ -1266,22 +1377,23 @@ function App() {
     return {
       pedidos: activeOrders.length,
       clientes: new Set(activeOrders.map((order) => order.clienteId)).size,
-      itens: consolidatedAllItems.length,
+      itens: allProductDemands.length,
     };
-  }, [consolidatedAllItems.length, ordersForSelectedDate]);
+  }, [allProductDemands.length, ordersForSelectedDate]);
 
   const routePurchaseSummaries = useMemo(
     () =>
       activeRoutes.map((route) => {
         const routeOrders = ordersForSelectedDate.filter((order) => getOrderRouteId(order) === route.id);
-        const routeItems = buildConsolidatedItems(routeOrders, productById);
+        const demands = buildProductDemands(routeOrders, productById);
         const routeActiveOrders = routeOrders.filter((order) => order.status !== "cancelado");
 
         return {
           route,
           pedidos: routeActiveOrders.length,
           clientes: new Set(routeActiveOrders.map((order) => order.clienteId)).size,
-          itens: routeItems.length,
+          itens: demands.length,
+          demands,
         };
       }),
     [activeRoutes, clientById, ordersForSelectedDate, productById],
@@ -1315,7 +1427,7 @@ function App() {
       return {
         ...item,
         produtoNome: product.nome,
-        unidade: product.unidadePadrao,
+        unidade: getProductOrderUnits(product).includes(item.unidade) ? item.unidade : product.unidadePadrao,
       };
     });
   }
@@ -1344,6 +1456,7 @@ function App() {
     setDraftItems([]);
     setProductSearch("");
     setSelectedProductId(activeProducts[0]?.id ?? "");
+    setSelectedOrderUnit(activeProducts[0]?.unidadePadrao ?? "caixa");
     setQuantity("1");
     resetQuickOrder();
     setOrderDraftActive(true);
@@ -1358,6 +1471,7 @@ function App() {
     setDraftItems(order.itens);
     setProductSearch("");
     setSelectedProductId(activeProducts[0]?.id ?? "");
+    setSelectedOrderUnit(activeProducts[0]?.unidadePadrao ?? "caixa");
     setQuantity("1");
     resetQuickOrder();
     setOrderDraftActive(true);
@@ -1373,6 +1487,7 @@ function App() {
     setOrderObservation("");
     setDraftItems([]);
     setProductSearch("");
+    setSelectedOrderUnit(activeProducts[0]?.unidadePadrao ?? "caixa");
     setQuantity("1");
     resetQuickOrder();
     setOrderDraftActive(false);
@@ -1388,7 +1503,7 @@ function App() {
 
     setDraftItems((current) => {
       const existingItem = current.find(
-        (item) => item.produtoId === selectedProduct.id && item.unidade === selectedProduct.unidadePadrao,
+        (item) => item.produtoId === selectedProduct.id && item.unidade === selectedOrderUnit,
       );
 
       if (existingItem) {
@@ -1409,7 +1524,7 @@ function App() {
           produtoId: selectedProduct.id,
           produtoNome: selectedProduct.nome,
           quantidade: parsedQuantity,
-          unidade: selectedProduct.unidadePadrao,
+          unidade: selectedOrderUnit,
           observacao: "",
         },
       ];
@@ -1448,6 +1563,8 @@ function App() {
     setProductForm({
       nome: quickOrderPickerLine.produtoTexto,
       unidadePadrao: quickOrderPickerLine.informedUnit ?? quickOrderPickerLine.unidade,
+      unidadesPedido: [quickOrderPickerLine.informedUnit ?? quickOrderPickerLine.unidade],
+      unidadeCompra: quickOrderPickerLine.informedUnit ?? quickOrderPickerLine.unidade,
     });
     setProductCatalogSearch("");
     setCatalogMessage("Cadastre o produto para continuar o pedido em andamento.");
@@ -1757,6 +1874,8 @@ function App() {
     setProductForm({
       nome: product.nome,
       unidadePadrao: product.unidadePadrao,
+      unidadesPedido: getProductOrderUnits(product),
+      unidadeCompra: getProductPurchaseUnit(product),
     });
     setProductCatalogSearch("");
   }
@@ -1777,6 +1896,10 @@ function App() {
                   ...product,
                   nome: productName,
                   unidadePadrao: productForm.unidadePadrao,
+                  unidadesPedido: Array.from(
+                    new Set([productForm.unidadePadrao, ...productForm.unidadesPedido]),
+                  ),
+                  unidadeCompra: productForm.unidadeCompra,
                 }
               : product,
           ),
@@ -1798,6 +1921,8 @@ function App() {
       id: `produto-${Date.now()}`,
       nome: productName,
       unidadePadrao: productForm.unidadePadrao,
+      unidadesPedido: Array.from(new Set([productForm.unidadePadrao, ...productForm.unidadesPedido])),
+      unidadeCompra: productForm.unidadeCompra,
       ativo: true,
     };
 
@@ -1872,6 +1997,7 @@ function App() {
       products,
       orders,
       checkedItems,
+      purchasePlans,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
 
@@ -1909,6 +2035,7 @@ function App() {
         setProducts(applyProductCatalogRevision(payload.products));
         setOrders(payload.orders);
         setCheckedItems(payload.checkedItems ?? {});
+        setPurchasePlans(payload.purchasePlans ?? {});
         localStorage.setItem(PRODUCT_CATALOG_REVISION_STORAGE_KEY, PRODUCT_CATALOG_REVISION);
         setSelectedRouteId(payload.routes.find((route) => route.ativo)?.id ?? DEFAULT_ROUTE_ID);
         setSelectedOrderId(null);
@@ -1938,6 +2065,88 @@ function App() {
     setCheckedItems((current) => ({ ...current, [key]: !current[key] }));
   }
 
+  function demandCheckedKey(demand: ProductDemand) {
+    return `${selectedDeliveryDate}:demanda:${demand.produtoId}`;
+  }
+
+  function toggleDemandChecked(demand: ProductDemand) {
+    const key = demandCheckedKey(demand);
+    setCheckedItems((current) => ({ ...current, [key]: !current[key] }));
+  }
+
+  function purchasePlanKey(routeId: string, productId: string) {
+    return `${selectedDeliveryDate}:${routeId}:${productId}`;
+  }
+
+  function getPurchasePlan(routeId: string, productId: string): PurchasePlanEntry {
+    const product = productById.get(productId);
+
+    return (
+      purchasePlans[purchasePlanKey(routeId, productId)] ?? {
+        quantidade: "",
+        unidade: product ? getProductPurchaseUnit(product) : "caixa",
+      }
+    );
+  }
+
+  function updatePurchasePlan(
+    routeId: string,
+    productId: string,
+    patch: Partial<PurchasePlanEntry>,
+  ) {
+    const key = purchasePlanKey(routeId, productId);
+    const currentPlan = getPurchasePlan(routeId, productId);
+
+    setPurchasePlans((current) => ({
+      ...current,
+      [key]: {
+        ...currentPlan,
+        ...patch,
+      },
+    }));
+  }
+
+  function formatPurchasePlan(plan: PurchasePlanEntry): string {
+    const quantity = parseQuantity(plan.quantidade);
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return "A definir";
+    }
+
+    return formatQuantityWithUnit(quantity, plan.unidade);
+  }
+
+  function getGeneralPurchasePlans(productId: string): Array<{
+    quantidade: number;
+    unidade: Unit;
+  }> {
+    const grouped = new Map<Unit, number>();
+
+    activeRoutes.forEach((route) => {
+      const plan = getPurchasePlan(route.id, productId);
+      const quantity = parseQuantity(plan.quantidade);
+
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        return;
+      }
+
+      grouped.set(plan.unidade, (grouped.get(plan.unidade) ?? 0) + quantity);
+    });
+
+    return Array.from(grouped.entries()).map(([unidade, quantidade]) => ({
+      unidade,
+      quantidade,
+    }));
+  }
+
+  function formatGeneralPurchasePlan(productId: string): string {
+    const plans = getGeneralPurchasePlans(productId);
+
+    return plans.length > 0
+      ? plans.map((plan) => formatQuantityWithUnit(plan.quantidade, plan.unidade)).join(" + ")
+      : "A definir";
+  }
+
   function getOrdersForPdf(scope: PdfScope) {
     if (scope.type === "all") {
       return ordersForSelectedDate;
@@ -1957,11 +2166,12 @@ function App() {
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 14;
     const tableWidth = pageWidth - margin * 2;
-    const productWidth = 118;
-    const quantityWidth = tableWidth - productWidth;
-    const rowHeight = 13;
+    const productWidth = 76;
+    const demandWidth = 60;
+    const purchaseWidth = tableWidth - productWidth - demandWidth;
+    const headerHeight = 13;
     const pdfOrders = getOrdersForPdf(scope);
-    const pdfItems = buildConsolidatedItems(pdfOrders, productById);
+    const pdfDemands = buildProductDemands(pdfOrders, productById);
     const pdfActiveOrders = pdfOrders.filter((order) => order.status !== "cancelado");
     const pdfSummary = {
       pedidos: pdfActiveOrders.length,
@@ -2040,18 +2250,30 @@ function App() {
     function drawTableHeader(currentY: number) {
       doc.setFillColor(18, 23, 33);
       doc.setDrawColor(18, 23, 33);
-      doc.rect(margin, currentY, tableWidth, rowHeight, "FD");
+      doc.rect(margin, currentY, tableWidth, headerHeight, "FD");
       doc.setTextColor(255, 255, 255);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(13);
       doc.text("Produto", margin + 4, currentY + 8.5);
-      doc.text("Quantidade", margin + productWidth + 4, currentY + 8.5);
-      return currentY + rowHeight;
+      doc.text("Demanda", margin + productWidth + 4, currentY + 8.5);
+      doc.text("Comprar", margin + productWidth + demandWidth + 4, currentY + 8.5);
+      return currentY + headerHeight;
     }
 
     y = drawTableHeader(y);
 
-    pdfItems.forEach((item, index) => {
+    pdfDemands.forEach((demand, index) => {
+      const demandText = formatProductDemand(demand);
+      const purchaseText =
+        scope.type === "all"
+          ? formatGeneralPurchasePlan(demand.produtoId)
+          : formatPurchasePlan(getPurchasePlan(scope.routeId, demand.produtoId));
+      const productLines = doc.splitTextToSize(demand.produtoNome, productWidth - 8);
+      const demandLines = doc.splitTextToSize(demandText, demandWidth - 8);
+      const purchaseLines = doc.splitTextToSize(purchaseText, purchaseWidth - 8);
+      const lineCount = Math.max(productLines.length, demandLines.length, purchaseLines.length);
+      const rowHeight = Math.max(13, 6 + lineCount * 5);
+
       if (y + rowHeight > pageHeight - 18) {
         doc.addPage();
         y = 14;
@@ -2062,12 +2284,15 @@ function App() {
       doc.setFillColor(isEven ? 250 : 241, isEven ? 252 : 245, isEven ? 250 : 242);
       doc.setDrawColor(177, 187, 177);
       doc.rect(margin, y, productWidth, rowHeight, "FD");
-      doc.rect(margin + productWidth, y, quantityWidth, rowHeight, "FD");
+      doc.rect(margin + productWidth, y, demandWidth, rowHeight, "FD");
+      doc.rect(margin + productWidth + demandWidth, y, purchaseWidth, rowHeight, "FD");
       doc.setTextColor(20, 28, 24);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(14);
-      doc.text(item.produtoNome, margin + 4, y + 8.8);
-      doc.text(formatQuantityWithUnit(item.quantidade, item.unidade), margin + productWidth + 4, y + 8.8);
+      doc.setFontSize(11);
+      doc.text(productLines, margin + 4, y + 7);
+      doc.text(demandLines, margin + productWidth + 4, y + 7);
+      doc.setTextColor(40, 126, 29);
+      doc.text(purchaseLines, margin + productWidth + demandWidth + 4, y + 7);
       y += rowHeight;
     });
 
@@ -2080,7 +2305,7 @@ function App() {
   }
 
   async function exportPdf(mode: "download" | "share", scope: PdfScope = { type: "route", routeId: selectedRouteId }) {
-    const pdfItems = buildConsolidatedItems(getOrdersForPdf(scope), productById);
+    const pdfItems = buildProductDemands(getOrdersForPdf(scope), productById);
 
     if (pdfItems.length === 0) {
       return;
@@ -2605,8 +2830,8 @@ function App() {
                             <span>{line.produtoTexto || line.raw}</span>
                             {line.status === "unit-conflict" && lineProduct && line.informedUnit ? (
                               <small className="quick-order-warning">
-                                A lista informou {line.informedUnit}, mas {lineProduct.nome} está cadastrado como{" "}
-                                {lineProduct.unidadePadrao}.
+                                A lista informou {line.informedUnit}, mas {lineProduct.nome} aceita{" "}
+                                {getProductOrderUnits(lineProduct).join(" ou ")}.
                               </small>
                             ) : null}
                           </div>
@@ -2624,9 +2849,8 @@ function App() {
                               value={line.unidade}
                               onChange={(event) => updateQuickOrderUnit(line.id, event.target.value as Unit)}
                               aria-label={`Unidade para ${line.produtoTexto || line.raw}`}
-                              disabled={Boolean(lineProduct)}
                             >
-                              {(lineProduct ? [lineProduct.unidadePadrao] : units).map((unit) => (
+                              {(lineProduct ? getProductOrderUnits(lineProduct) : units).map((unit) => (
                                 <option value={unit} key={unit}>
                                   {unit}
                                 </option>
@@ -2692,16 +2916,34 @@ function App() {
               />
             </label>
 
-            <div className="field-grid three">
+            <div className="field-grid order-item-grid">
               <label>
                 <span>Produto</span>
                 <select
                   value={selectedProductId}
-                  onChange={(event) => setSelectedProductId(event.target.value)}
+                  onChange={(event) => {
+                    const productId = event.target.value;
+                    const product = activeProducts.find((currentProduct) => currentProduct.id === productId);
+                    setSelectedProductId(productId);
+                    setSelectedOrderUnit(product?.unidadePadrao ?? "caixa");
+                  }}
                 >
                   {filteredProducts.map((product) => (
                     <option value={product.id} key={product.id}>
                       {product.nome} ({product.unidadePadrao})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Unidade</span>
+                <select
+                  value={selectedOrderUnit}
+                  onChange={(event) => setSelectedOrderUnit(event.target.value as Unit)}
+                >
+                  {(selectedProduct ? getProductOrderUnits(selectedProduct) : ["caixa"]).map((unit) => (
+                    <option value={unit} key={unit}>
+                      {unit}
                     </option>
                   ))}
                 </select>
@@ -2875,25 +3117,31 @@ function App() {
           </div>
         </section>
 
-        {consolidatedAllItems.length === 0 ? (
+        {allProductDemands.length === 0 ? (
           <EmptyState icon={<ShoppingBasket size={30} />} title="Lista vazia nesta entrega" />
         ) : (
-          <div className="ceasa-list">
-            {consolidatedAllItems.map((item) => {
-              const itemChecked = checkedItems[checkedKey(item)] ?? false;
+          <div className="ceasa-planning-list">
+            {allProductDemands.map((demand) => {
+              const itemChecked = checkedItems[demandCheckedKey(demand)] ?? false;
               return (
-                <button
-                  className={itemChecked ? "ceasa-item checked" : "ceasa-item"}
-                  key={`${item.produtoId}-${item.unidade}`}
-                  onClick={() => toggleChecked(item)}
-                  type="button"
-                >
-                  <span className="check-box" aria-hidden="true">
+                <article className={itemChecked ? "ceasa-plan-row checked" : "ceasa-plan-row"} key={demand.produtoId}>
+                  <button
+                    className="check-box"
+                    onClick={() => toggleDemandChecked(demand)}
+                    type="button"
+                    aria-label={itemChecked ? `Desmarcar ${demand.produtoNome}` : `Marcar ${demand.produtoNome}`}
+                  >
                     {itemChecked ? <CheckCircle2 size={20} /> : null}
-                  </span>
-                  <span>{item.produtoNome}</span>
-                  <strong>{formatQuantityWithUnit(item.quantidade, item.unidade)}</strong>
-                </button>
+                  </button>
+                  <div>
+                    <strong>{demand.produtoNome}</strong>
+                    <span>Demanda: {formatProductDemand(demand)}</span>
+                  </div>
+                  <div className="ceasa-plan-total">
+                    <span>Compra planejada</span>
+                    <strong>{formatGeneralPurchasePlan(demand.produtoId)}</strong>
+                  </div>
+                </article>
               );
             })}
           </div>
@@ -2905,35 +3153,96 @@ function App() {
             <span className="soft-badge">Separação por rota</span>
           </div>
           <div className="route-pdf-grid">
-            {routePurchaseSummaries.map(({ route, pedidos, clientes, itens }) => (
-              <article className="route-pdf-card" key={route.id}>
-                <div>
-                  <strong>{route.nome}</strong>
-                  <span>
-                    {pedidos} pedidos - {clientes} clientes - {itens} itens
-                  </span>
+            {routePurchaseSummaries.map(({ route, pedidos, clientes, itens, demands }) => (
+              <details className="route-purchase-panel" key={route.id}>
+                <summary>
+                  <div>
+                    <strong>{route.nome}</strong>
+                    <span>
+                      {pedidos} pedidos - {clientes} clientes - {itens} itens
+                    </span>
+                  </div>
+                  <span className="soft-badge">{demands.length} produtos</span>
+                </summary>
+
+                <div className="route-purchase-body">
+                  {demands.length > 0 ? (
+                    <div className="route-purchase-list">
+                      {demands.map((demand) => {
+                        const plan = getPurchasePlan(route.id, demand.produtoId);
+                        const product = productById.get(demand.produtoId);
+
+                        return (
+                          <article className="route-purchase-row" key={demand.produtoId}>
+                            <div className="route-purchase-product">
+                              <strong>{demand.produtoNome}</strong>
+                              <span>Demanda: {formatProductDemand(demand)}</span>
+                            </div>
+                            <label>
+                              <span>Comprar</span>
+                              <input
+                                inputMode="decimal"
+                                value={plan.quantidade}
+                                onChange={(event) =>
+                                  updatePurchasePlan(route.id, demand.produtoId, {
+                                    quantidade: event.target.value,
+                                  })
+                                }
+                                placeholder="A definir"
+                              />
+                            </label>
+                            <label>
+                              <span>Unidade</span>
+                              <select
+                                value={plan.unidade}
+                                onChange={(event) =>
+                                  updatePurchasePlan(route.id, demand.produtoId, {
+                                    unidade: event.target.value as Unit,
+                                  })
+                                }
+                              >
+                                {Array.from(
+                                  new Set([
+                                    product ? getProductPurchaseUnit(product) : "caixa",
+                                    ...(product ? getProductOrderUnits(product) : []),
+                                  ]),
+                                ).map((unit) => (
+                                  <option value={unit} key={unit}>
+                                    {unit}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="form-alert info-alert">Nenhum pedido nesta rota.</p>
+                  )}
+
+                  <div className="route-pdf-actions">
+                    <button
+                      className="secondary-button compact"
+                      type="button"
+                      disabled={itens === 0}
+                      onClick={() => exportPdf("download", { type: "route", routeId: route.id })}
+                    >
+                      <Download size={16} aria-hidden="true" />
+                      Compra
+                    </button>
+                    <button
+                      className="secondary-button compact"
+                      type="button"
+                      disabled={itens === 0}
+                      onClick={() => exportDeliveryPdf(route.id)}
+                    >
+                      <FileText size={16} aria-hidden="true" />
+                      Entrega
+                    </button>
+                  </div>
                 </div>
-                <div className="route-pdf-actions">
-                  <button
-                    className="secondary-button compact"
-                    type="button"
-                    disabled={itens === 0}
-                    onClick={() => exportPdf("download", { type: "route", routeId: route.id })}
-                  >
-                    <Download size={16} aria-hidden="true" />
-                    Compra
-                  </button>
-                  <button
-                    className="secondary-button compact"
-                    type="button"
-                    disabled={itens === 0}
-                    onClick={() => exportDeliveryPdf(route.id)}
-                  >
-                    <FileText size={16} aria-hidden="true" />
-                    Entrega
-                  </button>
-                </div>
-              </article>
+              </details>
             ))}
           </div>
         </section>
@@ -3338,13 +3647,35 @@ function App() {
               />
             </label>
             <label>
-              <span>Unidade padrão</span>
+              <span>Padrão do pedido</span>
               <select
                 value={productForm.unidadePadrao}
                 onChange={(event) =>
+                  setProductForm((current) => {
+                    const unidadePadrao = event.target.value as Unit;
+                    return {
+                      ...current,
+                      unidadePadrao,
+                      unidadesPedido: Array.from(new Set([...current.unidadesPedido, unidadePadrao])),
+                    };
+                  })
+                }
+              >
+                {units.map((unit) => (
+                  <option value={unit} key={unit}>
+                    {unit}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Unidade de compra</span>
+              <select
+                value={productForm.unidadeCompra}
+                onChange={(event) =>
                   setProductForm((current) => ({
                     ...current,
-                    unidadePadrao: event.target.value as Unit,
+                    unidadeCompra: event.target.value as Unit,
                   }))
                 }
               >
@@ -3355,8 +3686,40 @@ function App() {
                 ))}
               </select>
             </label>
+          </div>
+
+          <fieldset className="unit-options">
+            <legend>Unidades aceitas no pedido</legend>
+            <div>
+              {units.map((unit) => {
+                const checked = productForm.unidadesPedido.includes(unit);
+                const required = productForm.unidadePadrao === unit;
+
+                return (
+                  <label className="unit-option" key={unit}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={required}
+                      onChange={(event) =>
+                        setProductForm((current) => ({
+                          ...current,
+                          unidadesPedido: event.target.checked
+                            ? Array.from(new Set([...current.unidadesPedido, unit]))
+                            : current.unidadesPedido.filter((currentUnit) => currentUnit !== unit),
+                        }))
+                      }
+                    />
+                    <span>{unit}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+
+          <div className="form-actions">
             <button
-              className="primary-button align-end"
+              className="primary-button"
               type="button"
               disabled={!productForm.nome.trim() || Boolean(duplicateProduct)}
               onClick={saveProduct}
@@ -3386,7 +3749,10 @@ function App() {
             <article className="registry-card" data-product-id={product.id} key={product.id}>
               <div>
                 <strong>{product.nome}</strong>
-                <span>{product.unidadePadrao}</span>
+                <span>
+                  Pedido: {getProductOrderUnits(product).join(", ")} · Compra:{" "}
+                  {getProductPurchaseUnit(product)}
+                </span>
               </div>
               <div className="registry-actions">
                 <button

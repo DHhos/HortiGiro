@@ -43,6 +43,8 @@ export interface Product {
   id: string;
   nome: string;
   unidadePadrao: Unit;
+  unidadesPedido: Unit[];
+  unidadeCompra: Unit;
   ativo: boolean;
 }
 

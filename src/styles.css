@@ -734,6 +734,54 @@ textarea:focus {
   grid-template-columns: 1.4fr 0.7fr auto;
 }
 
+.order-item-grid {
+  grid-template-columns: minmax(180px, 1.4fr) minmax(120px, 0.7fr) minmax(100px, 0.5fr) auto;
+}
+
+.unit-options {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.unit-options legend {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.unit-options > div {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.unit-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface-muted);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.unit-option input {
+  width: 17px;
+  height: 17px;
+  min-height: 0;
+  margin: 0;
+}
+
 .form-alert {
   margin: 0;
   padding: 10px 12px;
@@ -1079,6 +1127,76 @@ textarea:focus {
   gap: 10px;
 }
 
+.route-purchase-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.route-purchase-panel > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.route-purchase-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.route-purchase-panel > summary strong,
+.route-purchase-panel > summary span {
+  display: block;
+}
+
+.route-purchase-panel > summary > div > span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.route-purchase-body {
+  display: grid;
+  gap: 12px;
+  padding: 0 12px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.route-purchase-list {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.route-purchase-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px 150px;
+  align-items: end;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.route-purchase-product strong,
+.route-purchase-product span {
+  display: block;
+}
+
+.route-purchase-product span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
 .route-pdf-card,
 .route-management-row {
   display: grid;
@@ -1154,6 +1272,55 @@ textarea:focus {
 
 .ceasa-list {
   gap: 8px;
+}
+
+.ceasa-planning-list {
+  display: grid;
+  gap: 8px;
+}
+
+.ceasa-plan-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) minmax(150px, auto);
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.ceasa-plan-row > div strong,
+.ceasa-plan-row > div span {
+  display: block;
+}
+
+.ceasa-plan-row > div > span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.ceasa-plan-row.checked {
+  color: var(--checked-text);
+  background: var(--surface-subtle);
+}
+
+.ceasa-plan-total {
+  text-align: right;
+}
+
+.ceasa-plan-total span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.ceasa-plan-total strong {
+  margin-top: 4px;
+  color: var(--primary);
 }
 
 .ceasa-item {
@@ -1381,8 +1548,19 @@ textarea:focus {
   .settings-brand-row,
   .product-base-row,
   .quick-order-row,
-  .quick-order-controls {
+  .quick-order-controls,
+  .order-item-grid,
+  .route-purchase-row {
     grid-template-columns: 1fr;
+  }
+
+  .ceasa-plan-row {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+
+  .ceasa-plan-total {
+    grid-column: 2;
+    text-align: left;
   }
 
   .route-management-actions,

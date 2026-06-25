@@ -30,7 +30,7 @@ export const initialClients: Client[] = [];
 
 export const initialProducts: Product[] = [];
 
-export const suggestedProducts: Product[] = [
+const suggestedProductDefinitions: Array<Omit<Product, "unidadesPedido" | "unidadeCompra">> = [
   { id: "catalogo-1", nome: "Abacaxi Havaí T8", unidadePadrao: "caixa", ativo: true },
   { id: "catalogo-2", nome: "Abacaxi Havaí T10", unidadePadrao: "caixa", ativo: true },
   { id: "catalogo-3", nome: "Abacaxi Havaí T12", unidadePadrao: "caixa", ativo: true },
@@ -177,5 +177,25 @@ export const suggestedProducts: Product[] = [
   { id: "catalogo-146", nome: "Vagem", unidadePadrao: "caixa", ativo: true },
   { id: "catalogo-147", nome: "Vagem preta", unidadePadrao: "caixa", ativo: true },
 ];
+
+const flexibleOrderUnits: Record<string, { unidadesPedido: Unit[]; unidadeCompra: Unit }> = {
+  "Limão siciliano": { unidadesPedido: ["kg", "caixa"], unidadeCompra: "caixa" },
+  "Limão taiti": { unidadesPedido: ["kg", "caixa"], unidadeCompra: "caixa" },
+  "Pepino japonês": { unidadesPedido: ["caixa", "kg"], unidadeCompra: "caixa" },
+  "Pimentão amarelo": { unidadesPedido: ["caixa", "kg"], unidadeCompra: "caixa" },
+  "Pimentão misto": { unidadesPedido: ["caixa", "kg"], unidadeCompra: "caixa" },
+  "Pimentão verde": { unidadesPedido: ["caixa", "kg"], unidadeCompra: "caixa" },
+  "Pimentão vermelho": { unidadesPedido: ["caixa", "kg"], unidadeCompra: "caixa" },
+};
+
+export const suggestedProducts: Product[] = suggestedProductDefinitions.map((product) => {
+  const flexibleUnits = flexibleOrderUnits[product.nome];
+
+  return {
+    ...product,
+    unidadesPedido: flexibleUnits?.unidadesPedido ?? [product.unidadePadrao],
+    unidadeCompra: flexibleUnits?.unidadeCompra ?? product.unidadePadrao,
+  };
+});
 
 export const initialOrders: Order[] = [];
