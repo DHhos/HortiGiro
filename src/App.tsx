@@ -3138,7 +3138,7 @@ function App() {
                 >
                   {filteredProducts.map((product) => (
                     <option value={product.id} key={product.id}>
-                      {product.nome} ({product.unidadePadrao})
+                      {product.nome}
                     </option>
                   ))}
                 </select>
