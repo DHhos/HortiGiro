@@ -708,6 +708,16 @@ textarea:focus {
   background: var(--primary-soft);
 }
 
+.soft-badge.attention {
+  color: var(--warning-text);
+  background: var(--warning-bg);
+}
+
+.soft-badge.completed {
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
 .form-surface {
   display: grid;
   gap: 16px;
@@ -1189,6 +1199,11 @@ textarea:focus {
   background: var(--surface-muted);
 }
 
+.route-purchase-row.reviewed {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
 .route-purchase-product strong,
 .route-purchase-product span {
   display: block;
@@ -1199,6 +1214,22 @@ textarea:focus {
   color: var(--muted);
   font-size: 0.82rem;
   font-weight: 800;
+}
+
+.route-purchase-product .purchase-review-status {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 8px;
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.route-purchase-product .purchase-review-status.reviewed {
+  color: var(--primary);
+}
+
+.route-purchase-product .purchase-review-status.pending {
+  color: var(--warning-text);
 }
 
 .route-purchase-note {

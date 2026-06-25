@@ -1288,7 +1288,7 @@ function App() {
   }, [activeProducts, selectedProductId]);
 
   useEffect(() => {
-    if (view !== "products" || !pendingQuickOrderProductLineId) {
+    if (view !== "products" || (!pendingQuickOrderProductLineId && !editingProductId)) {
       return;
     }
 
@@ -1301,7 +1301,7 @@ function App() {
     });
 
     return () => window.cancelAnimationFrame(frameId);
-  }, [pendingQuickOrderProductLineId, view]);
+  }, [editingProductId, pendingQuickOrderProductLineId, view]);
 
   useEffect(() => {
     if (!selectedProduct) {
@@ -3325,36 +3325,6 @@ function App() {
           </div>
         </section>
 
-        {allProductDemands.length === 0 ? (
-          <EmptyState icon={<ShoppingBasket size={30} />} title="Lista vazia nesta entrega" />
-        ) : (
-          <div className="ceasa-planning-list">
-            {allProductDemands.map((demand) => {
-              const itemChecked = checkedItems[demandCheckedKey(demand)] ?? false;
-              return (
-                <article className={itemChecked ? "ceasa-plan-row checked" : "ceasa-plan-row"} key={demand.produtoId}>
-                  <button
-                    className="check-box"
-                    onClick={() => toggleDemandChecked(demand)}
-                    type="button"
-                    aria-label={itemChecked ? `Desmarcar ${demand.produtoNome}` : `Marcar ${demand.produtoNome}`}
-                  >
-                    {itemChecked ? <CheckCircle2 size={20} /> : null}
-                  </button>
-                  <div>
-                    <strong>{demand.produtoNome}</strong>
-                    <span>Demanda: {formatProductDemand(demand)}</span>
-                  </div>
-                  <div className="ceasa-plan-total">
-                    <span>Compra planejada</span>
-                    <strong>{formatGeneralPurchasePlan(demand.produtoId)}</strong>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
-
         <section className="content-section">
           <div className="section-heading">
             <h2>PDFs por rota</h2>
@@ -3363,6 +3333,9 @@ function App() {
           <div className="route-pdf-grid">
             {routePurchaseSummaries.map(({ route, pedidos, clientes, itens, demands }) => {
               const reviewDemands = demands.filter(demandRequiresPurchaseReview);
+              const pendingReviewDemands = reviewDemands.filter(
+                (demand) => getEffectiveRoutePurchase(route.id, demand).length === 0,
+              );
 
               return (
                 <details className="route-purchase-panel" key={route.id}>
@@ -3373,8 +3346,18 @@ function App() {
                         {pedidos} pedidos - {clientes} clientes - {itens} itens
                       </span>
                     </div>
-                    <span className="soft-badge">
-                      {reviewDemands.length} {reviewDemands.length === 1 ? "revisão" : "revisões"}
+                    <span
+                      className={
+                        pendingReviewDemands.length > 0 ? "soft-badge attention" : "soft-badge completed"
+                      }
+                    >
+                      {reviewDemands.length === 0
+                        ? "Sem revisão"
+                        : pendingReviewDemands.length === 0
+                          ? "Revisão concluída"
+                          : `${pendingReviewDemands.length} ${
+                              pendingReviewDemands.length === 1 ? "pendência" : "pendências"
+                            }`}
                     </span>
                   </summary>
 
@@ -3388,12 +3371,23 @@ function App() {
                           {reviewDemands.map((demand) => {
                             const plan = getPurchasePlan(route.id, demand.produtoId);
                             const product = productById.get(demand.produtoId);
+                            const reviewCompleted = getEffectiveRoutePurchase(route.id, demand).length > 0;
 
                             return (
-                              <article className="route-purchase-row" key={demand.produtoId}>
+                              <article
+                                className={`route-purchase-row ${reviewCompleted ? "reviewed" : "pending"}`}
+                                key={demand.produtoId}
+                              >
                                 <div className="route-purchase-product">
                                   <strong>{demand.produtoNome}</strong>
                                   <span>Demanda: {formatProductDemand(demand)}</span>
+                                  <span
+                                    className={`purchase-review-status ${
+                                      reviewCompleted ? "reviewed" : "pending"
+                                    }`}
+                                  >
+                                    {reviewCompleted ? "Revisado" : "Pendente"}
+                                  </span>
                                 </div>
                                 <label>
                                   <span>Comprar</span>
@@ -3466,6 +3460,47 @@ function App() {
               );
             })}
           </div>
+        </section>
+
+        <section className="content-section">
+          <div className="section-heading">
+            <h2>Lista geral de produtos</h2>
+            <span className="soft-badge">
+              {allProductDemands.length} {allProductDemands.length === 1 ? "produto" : "produtos"}
+            </span>
+          </div>
+          {allProductDemands.length === 0 ? (
+            <EmptyState icon={<ShoppingBasket size={30} />} title="Lista vazia nesta entrega" />
+          ) : (
+            <div className="ceasa-planning-list">
+              {allProductDemands.map((demand) => {
+                const itemChecked = checkedItems[demandCheckedKey(demand)] ?? false;
+                return (
+                  <article
+                    className={itemChecked ? "ceasa-plan-row checked" : "ceasa-plan-row"}
+                    key={demand.produtoId}
+                  >
+                    <button
+                      className="check-box"
+                      onClick={() => toggleDemandChecked(demand)}
+                      type="button"
+                      aria-label={itemChecked ? `Desmarcar ${demand.produtoNome}` : `Marcar ${demand.produtoNome}`}
+                    >
+                      {itemChecked ? <CheckCircle2 size={20} /> : null}
+                    </button>
+                    <div>
+                      <strong>{demand.produtoNome}</strong>
+                      <span>Demanda: {formatProductDemand(demand)}</span>
+                    </div>
+                    <div className="ceasa-plan-total">
+                      <span>Compra planejada</span>
+                      <strong>{formatGeneralPurchasePlan(demand.produtoId)}</strong>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </section>
       </div>
     );
