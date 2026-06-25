@@ -159,7 +159,7 @@ const FIXED_PRIMARY_COLOR = initialSettings.primaryColor;
 const FIXED_PDF_FOOTER = initialSettings.pdfFooter;
 const TEMP_DOWNLOAD_URL_TTL = 10 * 60 * 1000;
 const ORDER_DRAFT_STORAGE_KEY = "hortigiro.orderDraft";
-const PRODUCT_CATALOG_REVISION = "2026-06-25-unidades-pedido-compra";
+const PRODUCT_CATALOG_REVISION = "2026-06-25-produtos-unificados-por-unidade";
 const PRODUCT_CATALOG_REVISION_STORAGE_KEY = "hortigiro.productCatalogRevision";
 const productCatalogRemovedNames = [
   "Abacaxi",
@@ -186,24 +186,59 @@ const productCatalogRemovedNames = [
   "Ovos",
   "Pepino salada",
   "Pimentão",
-  "Acelga",
-  "Maçã sacolão",
-  "Manga",
-  "Maracujá",
-  "Melão",
-  "Repolho",
-  "Repolho roxo",
   "Tomate",
-  "Tomate cereja",
   "Uva",
-  "Uva crimson",
-  "Uva thompson",
 ];
 const productCatalogRenamedNames: Record<string, string> = {
+  "Acelga caixa": "Acelga",
+  "Acelga (caixa)": "Acelga",
+  "Acelga unidade": "Acelga",
+  "Acelga (unidade)": "Acelga",
   "Abóbora": "Abóbora pescoço",
   "Champignon": "Cogumelo Champignon",
-  "Mamão": "Mamão caixa",
+  "Maçã sacolão caixa": "Maçã sacolão",
+  "Maçã sacolão kg": "Maçã sacolão",
+  "Mamão caixa": "Mamão",
+  "Mamão (caixa)": "Mamão",
+  "Mamão unidade": "Mamão",
+  "Mamão (unidade)": "Mamão",
+  Manga: "Manga comum",
+  "Manga caixa": "Manga comum",
+  "Manga (caixa)": "Manga comum",
+  "Manga kg": "Manga comum",
+  "Manga (kg)": "Manga comum",
+  "Maracujá caixa": "Maracujá",
+  "Maracujá kg": "Maracujá",
+  "Melão caixa": "Melão",
+  "Melão unidade": "Melão",
+  "Pimentão amarelo (caixa)": "Pimentão amarelo",
+  "Pimentão amarelo caixa": "Pimentão amarelo",
+  "Pimentão amarelo (kg)": "Pimentão amarelo",
+  "Pimentão amarelo kg": "Pimentão amarelo",
+  "Pimentão misto (caixa)": "Pimentão misto",
+  "Pimentão misto caixa": "Pimentão misto",
+  "Pimentão misto (kg)": "Pimentão misto",
+  "Pimentão misto kg": "Pimentão misto",
+  "Pimentão verde (caixa)": "Pimentão verde",
+  "Pimentão verde caixa": "Pimentão verde",
+  "Pimentão verde (kg)": "Pimentão verde",
+  "Pimentão verde kg": "Pimentão verde",
+  "Pimentão vermelho (caixa)": "Pimentão vermelho",
+  "Pimentão vermelho caixa": "Pimentão vermelho",
+  "Pimentão vermelho (kg)": "Pimentão vermelho",
+  "Pimentão vermelho kg": "Pimentão vermelho",
+  Repolho: "Repolho branco",
+  "Repolho caixa": "Repolho branco",
+  "Repolho unidade": "Repolho branco",
+  "Repolho roxo caixa": "Repolho roxo",
+  "Repolho roxo unidade": "Repolho roxo",
   "Shimeji": "Cogumelo Shimeji",
+  "Tomate cereja bandeja": "Tomate cereja",
+  "Tomate cereja caixa": "Tomate cereja",
+  "Uva crimson bandeja": "Uva crimson",
+  "Uva crimson caixa": "Uva crimson",
+  "Uva thompson bandeja": "Uva thompson",
+  "Uva thompson caixa": "Uva thompson",
 };
 
 const emptyClientForm: ClientForm = {
@@ -457,31 +492,49 @@ function shouldAddMissingCatalogProducts(productList: Product[]): boolean {
   return productList.some((product) => product.id.startsWith("produto-sugerido-")) || catalogLikeProducts.length >= 20;
 }
 
-function applyProductCatalogRevision(productList: Product[]): Product[] {
+function buildProductCatalogMigration(productList: Product[]) {
   const shouldAddMissingProducts = shouldAddMissingCatalogProducts(productList);
-  const revisedProducts = productList.reduce<Product[]>((productsToKeep, product) => {
+  const revisedProducts: Product[] = [];
+  const productIdMap: Record<string, string> = {};
+  const productIndexByName = new Map<string, number>();
+
+  productList.forEach((product) => {
     const productKey = getProductNameKey(product.nome);
     const renamedProductKey = productCatalogRenamedNameKeys.get(productKey);
     const renamedCatalogProduct = renamedProductKey ? suggestedProductByNameKey.get(renamedProductKey) : undefined;
     const catalogProduct = suggestedProductByNameKey.get(productKey);
+    let revisedProduct: Product;
 
     if (renamedCatalogProduct) {
-      productsToKeep.push(getCatalogProductPatch(product, renamedCatalogProduct));
-      return productsToKeep;
+      revisedProduct = getCatalogProductPatch(product, renamedCatalogProduct);
+    } else if (productCatalogRemovedNameKeys.has(productKey)) {
+      return;
+    } else if (catalogProduct) {
+      revisedProduct = getCatalogProductPatch(product, catalogProduct);
+    } else {
+      revisedProduct = sanitizeProduct(product);
     }
 
-    if (productCatalogRemovedNameKeys.has(productKey)) {
-      return productsToKeep;
+    const revisedKey = getProductNameKey(revisedProduct.nome);
+    const existingIndex = productIndexByName.get(revisedKey);
+
+    if (existingIndex !== undefined) {
+      const existingProduct = revisedProducts[existingIndex];
+      productIdMap[product.id] = existingProduct.id;
+      revisedProducts[existingIndex] = {
+        ...existingProduct,
+        ativo: existingProduct.ativo || revisedProduct.ativo,
+        unidadesPedido: Array.from(
+          new Set([...getProductOrderUnits(existingProduct), ...getProductOrderUnits(revisedProduct)]),
+        ),
+      };
+      return;
     }
 
-    if (catalogProduct) {
-      productsToKeep.push(getCatalogProductPatch(product, catalogProduct));
-      return productsToKeep;
-    }
-
-    productsToKeep.push(sanitizeProduct(product));
-    return productsToKeep;
-  }, []);
+    productIdMap[product.id] = revisedProduct.id;
+    productIndexByName.set(revisedKey, revisedProducts.length);
+    revisedProducts.push(revisedProduct);
+  });
 
   if (shouldAddMissingProducts) {
     const currentProductKeys = new Set(revisedProducts.map((product) => getProductNameKey(product.nome)));
@@ -497,7 +550,62 @@ function applyProductCatalogRevision(productList: Product[]): Product[] {
     revisedProducts.push(...productsToAdd);
   }
 
-  return sortProductsByName(revisedProducts);
+  return {
+    products: sortProductsByName(revisedProducts),
+    productIdMap,
+  };
+}
+
+function remapOrderProductIds(
+  orderList: Order[],
+  productIdMap: Record<string, string>,
+  productList: Product[],
+): Order[] {
+  const revisedProductById = new Map(productList.map((product) => [product.id, product]));
+
+  return orderList.map((order) => ({
+    ...order,
+    itens: mergeOrderItems(
+      order.itens.map((item) => {
+        const produtoId = productIdMap[item.produtoId] ?? item.produtoId;
+        const product = revisedProductById.get(produtoId);
+
+        return {
+          ...item,
+          produtoId,
+          produtoNome: product?.nome ?? item.produtoNome,
+          unidade:
+            product && !getProductOrderUnits(product).includes(item.unidade)
+              ? product.unidadePadrao
+              : item.unidade,
+        };
+      }),
+    ),
+  }));
+}
+
+function remapProductRecordKeys<T>(
+  record: Record<string, T>,
+  productIdMap: Record<string, string>,
+): Record<string, T> {
+  return Object.entries(record).reduce<Record<string, T>>((revisedRecord, [key, value]) => {
+    let revisedKey = key;
+
+    Object.entries(productIdMap).forEach(([currentId, nextId]) => {
+      if (currentId === nextId) {
+        return;
+      }
+
+      revisedKey = revisedKey.replace(`:${currentId}:`, `:${nextId}:`);
+
+      if (revisedKey.endsWith(`:${currentId}`)) {
+        revisedKey = `${revisedKey.slice(0, -(currentId.length + 1))}:${nextId}`;
+      }
+    });
+
+    revisedRecord[revisedKey] = value;
+    return revisedRecord;
+  }, {});
 }
 
 function sortProductsByName(productList: Product[]): Product[] {
@@ -1192,13 +1300,47 @@ function App() {
       return;
     }
 
-    setProducts((current) => {
-      const revisedProducts = applyProductCatalogRevision(current);
+    const migration = buildProductCatalogMigration(products);
 
-      return JSON.stringify(current) === JSON.stringify(revisedProducts) ? current : revisedProducts;
-    });
+    setProducts(
+      JSON.stringify(products) === JSON.stringify(migration.products) ? products : migration.products,
+    );
+    setOrders((current) => remapOrderProductIds(current, migration.productIdMap, migration.products));
+    setCheckedItems((current) => remapProductRecordKeys(current, migration.productIdMap));
+    setPurchasePlans((current) => remapProductRecordKeys(current, migration.productIdMap));
+    setDraftItems((current) =>
+      remapOrderProductIds(
+        [
+          {
+            id: "draft-migration",
+            clienteId: orderClientId,
+            routeId: selectedRouteId,
+            dataLancamento: toDateInputValue(new Date()),
+            dataEntrega: orderDeliveryDate,
+            status: "aberto",
+            observacaoGeral: orderObservation,
+            itens: current,
+            criadoEm: "",
+            atualizadoEm: "",
+          },
+        ],
+        migration.productIdMap,
+        migration.products,
+      )[0].itens,
+    );
+    setSelectedProductId((current) => migration.productIdMap[current] ?? current);
     localStorage.setItem(PRODUCT_CATALOG_REVISION_STORAGE_KEY, PRODUCT_CATALOG_REVISION);
-  }, [setProducts]);
+  }, [
+    orderClientId,
+    orderDeliveryDate,
+    orderObservation,
+    products,
+    selectedRouteId,
+    setCheckedItems,
+    setOrders,
+    setProducts,
+    setPurchasePlans,
+  ]);
 
   const clientById = useMemo(
     () => new Map(clients.map((client) => [client.id, client])),
@@ -2030,12 +2172,19 @@ function App() {
           ...initialSettings,
           companyName: payload.settings?.companyName ?? initialSettings.companyName,
         });
+        const productMigration = buildProductCatalogMigration(payload.products);
+        const importedOrders = remapOrderProductIds(
+          payload.orders,
+          productMigration.productIdMap,
+          productMigration.products,
+        );
+
         setRoutes(payload.routes);
         setClients(sortClientsByName(payload.clients));
-        setProducts(applyProductCatalogRevision(payload.products));
-        setOrders(payload.orders);
-        setCheckedItems(payload.checkedItems ?? {});
-        setPurchasePlans(payload.purchasePlans ?? {});
+        setProducts(productMigration.products);
+        setOrders(importedOrders);
+        setCheckedItems(remapProductRecordKeys(payload.checkedItems ?? {}, productMigration.productIdMap));
+        setPurchasePlans(remapProductRecordKeys(payload.purchasePlans ?? {}, productMigration.productIdMap));
         localStorage.setItem(PRODUCT_CATALOG_REVISION_STORAGE_KEY, PRODUCT_CATALOG_REVISION);
         setSelectedRouteId(payload.routes.find((route) => route.ativo)?.id ?? DEFAULT_ROUTE_ID);
         setSelectedOrderId(null);
