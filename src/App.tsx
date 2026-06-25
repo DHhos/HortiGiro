@@ -103,6 +103,24 @@ interface QuickOrderLine {
   status: "ready" | "needs-product" | "unit-conflict" | "invalid";
 }
 
+interface OrderDraftSnapshot {
+  version: 1;
+  active: boolean;
+  editingOrderId: string | null;
+  routeId: string;
+  orderClientId: string;
+  orderDeliveryDate: string;
+  orderObservation: string;
+  draftItems: DraftItem[];
+  productSearch: string;
+  selectedProductId: string;
+  quantity: string;
+  quickOrderOpen: boolean;
+  quickOrderText: string;
+  quickOrderProductOverrides: Record<string, string>;
+  quickOrderUnitOverrides: Record<string, Unit>;
+}
+
 interface BackupPayload {
   version: 1;
   exportedAt: string;
@@ -122,6 +140,7 @@ const FIXED_APP_NAME = initialSettings.appName;
 const FIXED_PRIMARY_COLOR = initialSettings.primaryColor;
 const FIXED_PDF_FOOTER = initialSettings.pdfFooter;
 const TEMP_DOWNLOAD_URL_TTL = 10 * 60 * 1000;
+const ORDER_DRAFT_STORAGE_KEY = "hortigiro.orderDraft";
 const PRODUCT_CATALOG_REVISION = "2026-06-24-produtos-sem-genericos";
 const PRODUCT_CATALOG_REVISION_STORAGE_KEY = "hortigiro.productCatalogRevision";
 const productCatalogRemovedNames = [
@@ -181,6 +200,26 @@ const emptyProductForm: ProductForm = {
   nome: "",
   unidadePadrao: "caixa",
 };
+
+function loadOrderDraftSnapshot(): OrderDraftSnapshot | null {
+  try {
+    const storedValue = localStorage.getItem(ORDER_DRAFT_STORAGE_KEY);
+
+    if (!storedValue) {
+      return null;
+    }
+
+    const snapshot = JSON.parse(storedValue) as Partial<OrderDraftSnapshot>;
+
+    if (snapshot.version !== 1 || !snapshot.active || !Array.isArray(snapshot.draftItems)) {
+      return null;
+    }
+
+    return snapshot as OrderDraftSnapshot;
+  } catch {
+    return null;
+  }
+}
 
 const pluralUnits: Record<Unit, string> = {
   caixa: "caixas",
@@ -866,6 +905,7 @@ function buildConsolidatedItems(orders: Order[], productById: ReadonlyMap<string
 function App() {
   useAppNavigationGuard();
 
+  const [restoredOrderDraft] = useState(loadOrderDraftSnapshot);
   const [settings, setSettings] = usePersistentState<AppSettings>("hortigiro.settings", initialSettings);
   const [routes, setRoutes] = usePersistentState<Route[]>("hortigiro.routes", initialRoutes);
   const [clients, setClients] = usePersistentState<Client[]>("hortigiro.clients", initialClients);
@@ -880,24 +920,43 @@ function App() {
   const [view, setView] = useState<View>("home");
   const [selectedRouteId, setSelectedRouteId] = usePersistentState<string>(
     "hortigiro.selectedRouteId",
-    DEFAULT_ROUTE_ID,
+    restoredOrderDraft?.routeId ?? DEFAULT_ROUTE_ID,
   );
   const [selectedDeliveryDate, setSelectedDeliveryDate] = useState(getNextDeliveryDate());
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(
+    restoredOrderDraft?.editingOrderId ?? null,
+  );
+  const [orderDraftActive, setOrderDraftActive] = useState(Boolean(restoredOrderDraft?.active));
+  const [restoringOrderDraft, setRestoringOrderDraft] = useState(Boolean(restoredOrderDraft?.active));
 
-  const [orderClientId, setOrderClientId] = useState(initialClients[0]?.id ?? "");
-  const [orderDeliveryDate, setOrderDeliveryDate] = useState(getTomorrowDate());
-  const [orderObservation, setOrderObservation] = useState("");
-  const [draftItems, setDraftItems] = useState<DraftItem[]>([]);
-  const [productSearch, setProductSearch] = useState("");
-  const [selectedProductId, setSelectedProductId] = useState(initialProducts[0]?.id ?? "");
-  const [quantity, setQuantity] = useState("1");
-  const [quickOrderOpen, setQuickOrderOpen] = useState(false);
-  const [quickOrderText, setQuickOrderText] = useState("");
-  const [quickOrderProductOverrides, setQuickOrderProductOverrides] = useState<Record<string, string>>({});
-  const [quickOrderUnitOverrides, setQuickOrderUnitOverrides] = useState<Record<string, Unit>>({});
+  const [orderClientId, setOrderClientId] = useState(
+    restoredOrderDraft?.orderClientId ?? initialClients[0]?.id ?? "",
+  );
+  const [orderDeliveryDate, setOrderDeliveryDate] = useState(
+    restoredOrderDraft?.orderDeliveryDate ?? getTomorrowDate(),
+  );
+  const [orderObservation, setOrderObservation] = useState(restoredOrderDraft?.orderObservation ?? "");
+  const [draftItems, setDraftItems] = useState<DraftItem[]>(restoredOrderDraft?.draftItems ?? []);
+  const [productSearch, setProductSearch] = useState(restoredOrderDraft?.productSearch ?? "");
+  const [selectedProductId, setSelectedProductId] = useState(
+    restoredOrderDraft?.selectedProductId ?? initialProducts[0]?.id ?? "",
+  );
+  const [quantity, setQuantity] = useState(restoredOrderDraft?.quantity ?? "1");
+  const [quickOrderOpen, setQuickOrderOpen] = useState(restoredOrderDraft?.quickOrderOpen ?? false);
+  const [quickOrderText, setQuickOrderText] = useState(restoredOrderDraft?.quickOrderText ?? "");
+  const [quickOrderProductOverrides, setQuickOrderProductOverrides] = useState<Record<string, string>>(
+    restoredOrderDraft?.quickOrderProductOverrides ?? {},
+  );
+  const [quickOrderUnitOverrides, setQuickOrderUnitOverrides] = useState<Record<string, Unit>>(
+    restoredOrderDraft?.quickOrderUnitOverrides ?? {},
+  );
   const [quickOrderMessage, setQuickOrderMessage] = useState("");
+  const [quickOrderPickerLineId, setQuickOrderPickerLineId] = useState<string | null>(null);
+  const [quickOrderPickerSearch, setQuickOrderPickerSearch] = useState("");
+  const [pendingQuickOrderProductLineId, setPendingQuickOrderProductLineId] = useState<string | null>(
+    null,
+  );
 
   const [clientSearch, setClientSearch] = useState("");
   const [clientForm, setClientForm] = useState<ClientForm>(emptyClientForm);
@@ -947,12 +1006,65 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (restoredOrderDraft?.active && restoredOrderDraft.routeId) {
+      setSelectedRouteId(restoredOrderDraft.routeId);
+    }
+    setRestoringOrderDraft(false);
+  }, [restoredOrderDraft, setSelectedRouteId]);
+
+  useEffect(() => {
+    if (!orderDraftActive) {
+      localStorage.removeItem(ORDER_DRAFT_STORAGE_KEY);
+      return;
+    }
+
+    const snapshot: OrderDraftSnapshot = {
+      version: 1,
+      active: true,
+      editingOrderId,
+      routeId: selectedRouteId,
+      orderClientId,
+      orderDeliveryDate,
+      orderObservation,
+      draftItems,
+      productSearch,
+      selectedProductId,
+      quantity,
+      quickOrderOpen,
+      quickOrderText,
+      quickOrderProductOverrides,
+      quickOrderUnitOverrides,
+    };
+
+    localStorage.setItem(ORDER_DRAFT_STORAGE_KEY, JSON.stringify(snapshot));
+  }, [
+    draftItems,
+    editingOrderId,
+    orderClientId,
+    orderDeliveryDate,
+    orderDraftActive,
+    orderObservation,
+    productSearch,
+    quantity,
+    quickOrderOpen,
+    quickOrderProductOverrides,
+    quickOrderText,
+    quickOrderUnitOverrides,
+    selectedProductId,
+    selectedRouteId,
+  ]);
+
+  useEffect(() => {
     if (!activeRoutes.some((route) => route.id === selectedRouteId)) {
       setSelectedRouteId(activeRoutes[0]?.id ?? DEFAULT_ROUTE_ID);
     }
   }, [activeRoutes, selectedRouteId, setSelectedRouteId]);
 
   useEffect(() => {
+    if (restoringOrderDraft) {
+      return;
+    }
+
     const selectedClientBelongsToRoute = activeClientsForSelectedRoute.some(
       (client) => client.id === orderClientId,
     );
@@ -960,7 +1072,7 @@ function App() {
     if (!selectedClientBelongsToRoute) {
       setOrderClientId(activeClientsForSelectedRoute[0]?.id ?? "");
     }
-  }, [activeClientsForSelectedRoute, orderClientId]);
+  }, [activeClientsForSelectedRoute, orderClientId, restoringOrderDraft]);
 
   useEffect(() => {
     if (!selectedProductId && activeProducts[0]) {
@@ -1087,6 +1199,22 @@ function App() {
 
   const quickOrderReadyCount = quickOrderLines.filter((line) => line.status === "ready").length;
   const quickOrderReviewCount = quickOrderLines.filter((line) => line.status !== "ready").length;
+  const quickOrderPickerLine = quickOrderPickerLineId
+    ? quickOrderLines.find((line) => line.id === quickOrderPickerLineId)
+    : undefined;
+  const quickOrderPickerProducts = useMemo(() => {
+    const search = normalizeText(quickOrderPickerSearch.trim());
+
+    if (!search) {
+      return activeProducts;
+    }
+
+    return activeProducts.filter((product) => {
+      const productName = normalizeText(product.nome);
+      const searchTokens = search.split(/\s+/).filter(Boolean);
+      return productName.includes(search) || searchTokens.every((token) => productName.includes(token));
+    });
+  }, [activeProducts, quickOrderPickerSearch]);
 
   const filteredClients = useMemo(() => {
     const search = normalizeText(clientSearch);
@@ -1198,9 +1326,17 @@ function App() {
     setQuickOrderProductOverrides({});
     setQuickOrderUnitOverrides({});
     setQuickOrderMessage("");
+    setQuickOrderPickerLineId(null);
+    setQuickOrderPickerSearch("");
+    setPendingQuickOrderProductLineId(null);
   }
 
   function startNewOrder() {
+    if (orderDraftActive) {
+      openView("new-order");
+      return;
+    }
+
     setEditingOrderId(null);
     setOrderClientId(activeClientsForSelectedRoute[0]?.id ?? "");
     setOrderDeliveryDate(getTomorrowDate());
@@ -1210,6 +1346,7 @@ function App() {
     setSelectedProductId(activeProducts[0]?.id ?? "");
     setQuantity("1");
     resetQuickOrder();
+    setOrderDraftActive(true);
     openView("new-order");
   }
 
@@ -1223,7 +1360,23 @@ function App() {
     setSelectedProductId(activeProducts[0]?.id ?? "");
     setQuantity("1");
     resetQuickOrder();
+    setOrderDraftActive(true);
     openView("new-order");
+  }
+
+  function discardOrderDraft() {
+    if (!window.confirm("Descartar o pedido em andamento? Esta ação não pode ser desfeita.")) {
+      return;
+    }
+
+    setEditingOrderId(null);
+    setOrderObservation("");
+    setDraftItems([]);
+    setProductSearch("");
+    setQuantity("1");
+    resetQuickOrder();
+    setOrderDraftActive(false);
+    openView("orders");
   }
 
   function addDraftItem() {
@@ -1268,6 +1421,39 @@ function App() {
   function updateQuickOrderProduct(lineId: string, productId: string) {
     setQuickOrderProductOverrides((current) => ({ ...current, [lineId]: productId }));
     setQuickOrderMessage("");
+  }
+
+  function openQuickOrderProductPicker(line: QuickOrderLine) {
+    setQuickOrderPickerLineId(line.id);
+    setQuickOrderPickerSearch(line.produtoTexto);
+  }
+
+  function selectQuickOrderProduct(productId: string) {
+    if (!quickOrderPickerLineId) {
+      return;
+    }
+
+    updateQuickOrderProduct(quickOrderPickerLineId, productId);
+    setQuickOrderPickerLineId(null);
+    setQuickOrderPickerSearch("");
+  }
+
+  function startProductRegistrationFromQuickOrder() {
+    if (!quickOrderPickerLine) {
+      return;
+    }
+
+    setPendingQuickOrderProductLineId(quickOrderPickerLine.id);
+    setEditingProductId(null);
+    setProductForm({
+      nome: quickOrderPickerLine.produtoTexto,
+      unidadePadrao: quickOrderPickerLine.informedUnit ?? quickOrderPickerLine.unidade,
+    });
+    setProductCatalogSearch("");
+    setCatalogMessage("Cadastre o produto para continuar o pedido em andamento.");
+    setQuickOrderPickerLineId(null);
+    setQuickOrderPickerSearch("");
+    openView("products");
   }
 
   function updateQuickOrderUnit(lineId: string, unit: Unit) {
@@ -1433,6 +1619,7 @@ function App() {
     setEditingOrderId(null);
     setDraftItems([]);
     resetQuickOrder();
+    setOrderDraftActive(false);
     openView("orders");
   }
 
@@ -1617,6 +1804,13 @@ function App() {
     setProducts((current) => sortProductsByName([...current, product]));
     setSelectedProductId(product.id);
     resetProductForm();
+
+    if (pendingQuickOrderProductLineId) {
+      updateQuickOrderProduct(pendingQuickOrderProductLineId, product.id);
+      setPendingQuickOrderProductLineId(null);
+      setCatalogMessage("");
+      openView("new-order");
+    }
   }
 
   function importSuggestedProductCatalog() {
@@ -2297,10 +2491,16 @@ function App() {
             <p className="eyebrow">{editingOrderId ? "Editando pedido" : "Novo pedido"}</p>
             <h1>{currentClient?.nome ?? "Selecionar cliente"}</h1>
           </div>
-          <button className="secondary-button" type="button" onClick={() => openView("orders")}>
-            <ChevronLeft size={18} aria-hidden="true" />
-            Voltar
-          </button>
+          <div className="button-row">
+            <button className="secondary-button" type="button" onClick={() => openView("orders")}>
+              <ChevronLeft size={18} aria-hidden="true" />
+              Voltar
+            </button>
+            <button className="warning-button" type="button" onClick={discardOrderDraft}>
+              <Trash2 size={17} aria-hidden="true" />
+              Descartar
+            </button>
+          </div>
         </div>
 
         {renderRouteSelector()}
@@ -2411,18 +2611,15 @@ function App() {
                             ) : null}
                           </div>
                           <div className="quick-order-controls">
-                            <select
-                              value={line.selectedProductId}
-                              onChange={(event) => updateQuickOrderProduct(line.id, event.target.value)}
+                            <button
+                              className="quick-order-product-button"
+                              type="button"
+                              onClick={() => openQuickOrderProductPicker(line)}
                               aria-label={`Produto para ${line.produtoTexto || line.raw}`}
                             >
-                              <option value="">Selecionar produto</option>
-                              {activeProducts.map((product) => (
-                                <option value={product.id} key={product.id}>
-                                  {product.nome}
-                                </option>
-                              ))}
-                            </select>
+                              <Search size={17} aria-hidden="true" />
+                              <span>{lineProduct?.nome ?? "Buscar produto"}</span>
+                            </button>
                             <select
                               value={line.unidade}
                               onChange={(event) => updateQuickOrderUnit(line.id, event.target.value as Unit)}
@@ -3216,6 +3413,93 @@ function App() {
     );
   }
 
+  function renderQuickOrderProductPicker() {
+    if (!quickOrderPickerLine) {
+      return null;
+    }
+
+    return (
+      <div
+        className="product-picker-backdrop"
+        role="presentation"
+        onClick={() => {
+          setQuickOrderPickerLineId(null);
+          setQuickOrderPickerSearch("");
+        }}
+      >
+        <section
+          className="product-picker-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="product-picker-title"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="product-picker-header">
+            <div>
+              <p className="eyebrow">Produto da linha</p>
+              <h2 id="product-picker-title">{quickOrderPickerLine.produtoTexto}</h2>
+            </div>
+            <button
+              className="icon-button"
+              type="button"
+              onClick={() => {
+                setQuickOrderPickerLineId(null);
+                setQuickOrderPickerSearch("");
+              }}
+              aria-label="Fechar busca de produto"
+              title="Fechar"
+            >
+              <XCircle size={20} aria-hidden="true" />
+            </button>
+          </div>
+
+          <label className="search-field product-picker-search">
+            <Search size={18} aria-hidden="true" />
+            <input
+              autoFocus
+              value={quickOrderPickerSearch}
+              onChange={(event) => setQuickOrderPickerSearch(event.target.value)}
+              placeholder="Digite o nome do produto"
+            />
+          </label>
+
+          <div className="product-picker-list" aria-label="Resultados da busca">
+            {quickOrderPickerProducts.length > 0 ? (
+              quickOrderPickerProducts.map((product) => (
+                <button
+                  className="product-picker-option"
+                  type="button"
+                  onClick={() => selectQuickOrderProduct(product.id)}
+                  key={product.id}
+                >
+                  <span>
+                    <strong>{product.nome}</strong>
+                    <small>{product.unidadePadrao}</small>
+                  </span>
+                  <CheckCircle2 size={19} aria-hidden="true" />
+                </button>
+              ))
+            ) : (
+              <div className="product-picker-empty">
+                <strong>Nenhum produto encontrado</strong>
+                <span>Revise a busca ou cadastre este produto.</span>
+              </div>
+            )}
+          </div>
+
+          <button
+            className="secondary-button product-picker-create"
+            type="button"
+            onClick={startProductRegistrationFromQuickOrder}
+          >
+            <Plus size={18} aria-hidden="true" />
+            Cadastrar novo produto
+          </button>
+        </section>
+      </div>
+    );
+  }
+
   function renderCurrentView() {
     if (view === "new-order") {
       return renderNewOrder();
@@ -3260,8 +3544,10 @@ function App() {
     return "nav-button";
   }
 
+  const showOrderDraftBar = orderDraftActive && view !== "new-order";
+
   return (
-    <div className="app-shell">
+    <div className={`app-shell${showOrderDraftBar ? " has-order-draft-bar" : ""}`}>
       <header className="topbar">
         <button className="brand" type="button" onClick={() => openView("home")} aria-label={`${appName} inicio`}>
           <img src={logoSrc} alt="" />
@@ -3297,6 +3583,23 @@ function App() {
       </header>
 
       <main className="workspace">{renderCurrentView()}</main>
+
+      {renderQuickOrderProductPicker()}
+
+      {showOrderDraftBar ? (
+        <div className="order-draft-bar">
+          <div>
+            <strong>Pedido em andamento</strong>
+            <span>
+              {clientById.get(orderClientId)?.nome ?? "Cliente não selecionado"} · {draftItems.length}{" "}
+              {draftItems.length === 1 ? "item" : "itens"}
+            </span>
+          </div>
+          <button className="primary-button compact" type="button" onClick={() => openView("new-order")}>
+            Voltar
+          </button>
+        </div>
+      ) : null}
 
       <nav className="bottom-nav" aria-label="Navegação principal">
         <button className={navButtonClass("home")} type="button" onClick={() => openView("home")}>

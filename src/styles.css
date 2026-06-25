@@ -867,9 +867,134 @@ textarea:focus {
   gap: 8px;
 }
 
+.quick-order-product-button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface);
+  text-align: left;
+}
+
+.quick-order-product-button svg {
+  flex: 0 0 auto;
+  color: var(--primary);
+}
+
+.quick-order-product-button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .quick-order-confirm-unit {
   grid-column: 1 / -1;
   justify-self: end;
+}
+
+.product-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.product-picker-dialog {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 14px;
+  width: min(100%, 560px);
+  max-height: min(720px, calc(100dvh - 36px));
+  padding: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+}
+
+.product-picker-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.product-picker-header h2 {
+  margin: 3px 0 0;
+  color: var(--text);
+  font-size: 1.15rem;
+}
+
+.product-picker-search {
+  min-height: 50px;
+}
+
+.product-picker-list {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-height: 150px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.product-picker-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface-muted);
+  text-align: left;
+}
+
+.product-picker-option span,
+.product-picker-option strong,
+.product-picker-option small {
+  display: block;
+}
+
+.product-picker-option small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.product-picker-option svg {
+  flex: 0 0 auto;
+  color: var(--primary);
+}
+
+.product-picker-empty {
+  display: grid;
+  place-items: center;
+  gap: 5px;
+  min-height: 150px;
+  padding: 20px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.product-picker-empty strong {
+  color: var(--text);
+}
+
+.product-picker-create {
+  width: 100%;
 }
 
 .search-field {
@@ -1124,16 +1249,59 @@ textarea:focus {
 }
 
 .bottom-nav {
-  position: sticky;
+  position: fixed;
+  right: auto;
   bottom: 0;
-  z-index: 6;
+  left: 50%;
+  z-index: 12;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 6px;
+  width: min(100%, 1120px);
   padding: 8px 10px max(8px, env(safe-area-inset-bottom));
   background: var(--nav-bg);
   border-top: 1px solid var(--border);
   backdrop-filter: blur(16px);
+  transform: translateX(-50%);
+}
+
+.order-draft-bar {
+  position: fixed;
+  bottom: calc(71px + env(safe-area-inset-bottom));
+  left: 50%;
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: min(100%, 1120px);
+  min-height: 58px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.16);
+  transform: translateX(-50%);
+}
+
+.order-draft-bar strong,
+.order-draft-bar span {
+  display: block;
+}
+
+.order-draft-bar strong {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.order-draft-bar span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.app-shell.has-order-draft-bar .workspace {
+  padding-bottom: 170px;
 }
 
 .nav-button {
@@ -1230,6 +1398,20 @@ textarea:focus {
   .quick-order-top {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .product-picker-backdrop {
+    place-items: end center;
+    padding: 0;
+  }
+
+  .product-picker-dialog {
+    width: 100%;
+    max-height: 88dvh;
+    padding: 16px 12px max(14px, env(safe-area-inset-bottom));
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
   }
 
   .calendar-action {
