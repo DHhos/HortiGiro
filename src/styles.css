@@ -717,6 +717,10 @@ textarea:focus {
   background: var(--surface);
 }
 
+.product-form-section {
+  scroll-margin-top: 86px;
+}
+
 .field-grid {
   display: grid;
   gap: 12px;
@@ -1194,6 +1198,13 @@ textarea:focus {
   margin-top: 4px;
   color: var(--muted);
   font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.route-purchase-note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
   font-weight: 800;
 }
 

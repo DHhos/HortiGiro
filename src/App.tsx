@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -1168,6 +1168,8 @@ function App() {
   const [productForm, setProductForm] = useState<ProductForm>(emptyProductForm);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [catalogMessage, setCatalogMessage] = useState("");
+  const productFormSectionRef = useRef<HTMLElement | null>(null);
+  const productNameInputRef = useRef<HTMLInputElement | null>(null);
   const [routeName, setRouteName] = useState("");
   const [backupMessage, setBackupMessage] = useState("");
 
@@ -1284,6 +1286,22 @@ function App() {
       setSelectedProductId(activeProducts[0].id);
     }
   }, [activeProducts, selectedProductId]);
+
+  useEffect(() => {
+    if (view !== "products" || !pendingQuickOrderProductLineId) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      productFormSectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      productNameInputRef.current?.focus({ preventScroll: true });
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [pendingQuickOrderProductLineId, view]);
 
   useEffect(() => {
     if (!selectedProduct) {
@@ -2255,14 +2273,38 @@ function App() {
     }));
   }
 
-  function formatPurchasePlan(plan: PurchasePlanEntry): string {
-    const quantity = parseQuantity(plan.quantidade);
+  function demandRequiresPurchaseReview(demand: ProductDemand): boolean {
+    const product = productById.get(demand.produtoId);
+    const purchaseUnit = product ? getProductPurchaseUnit(product) : demand.quantities[0]?.unidade;
+    const demandUnits = new Set(demand.quantities.map((quantity) => quantity.unidade));
 
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      return "A definir";
+    return demandUnits.size > 1 || Array.from(demandUnits).some((unit) => unit !== purchaseUnit);
+  }
+
+  function getEffectiveRoutePurchase(
+    routeId: string,
+    demand: ProductDemand,
+  ): Array<{ quantidade: number; unidade: Unit }> {
+    if (!demandRequiresPurchaseReview(demand)) {
+      return demand.quantities;
     }
 
-    return formatQuantityWithUnit(quantity, plan.unidade);
+    const plan = getPurchasePlan(routeId, demand.produtoId);
+    const quantity = parseQuantity(plan.quantidade);
+
+    return Number.isFinite(quantity) && quantity > 0
+      ? [{ quantidade: quantity, unidade: plan.unidade }]
+      : [];
+  }
+
+  function formatRoutePurchasePlan(routeId: string, demand: ProductDemand): string {
+    const purchase = getEffectiveRoutePurchase(routeId, demand);
+
+    return purchase.length > 0
+      ? purchase
+          .map((item) => formatQuantityWithUnit(item.quantidade, item.unidade))
+          .join(" + ")
+      : "A definir";
   }
 
   function getGeneralPurchasePlans(productId: string): Array<{
@@ -2271,15 +2313,16 @@ function App() {
   }> {
     const grouped = new Map<Unit, number>();
 
-    activeRoutes.forEach((route) => {
-      const plan = getPurchasePlan(route.id, productId);
-      const quantity = parseQuantity(plan.quantidade);
+    routePurchaseSummaries.forEach(({ route, demands }) => {
+      const demand = demands.find((currentDemand) => currentDemand.produtoId === productId);
 
-      if (!Number.isFinite(quantity) || quantity <= 0) {
+      if (!demand) {
         return;
       }
 
-      grouped.set(plan.unidade, (grouped.get(plan.unidade) ?? 0) + quantity);
+      getEffectiveRoutePurchase(route.id, demand).forEach((item) => {
+        grouped.set(item.unidade, (grouped.get(item.unidade) ?? 0) + item.quantidade);
+      });
     });
 
     return Array.from(grouped.entries()).map(([unidade, quantidade]) => ({
@@ -2288,7 +2331,23 @@ function App() {
     }));
   }
 
+  function generalPurchaseNeedsDefinition(productId: string): boolean {
+    return routePurchaseSummaries.some(({ route, demands }) => {
+      const demand = demands.find((currentDemand) => currentDemand.produtoId === productId);
+
+      return Boolean(
+        demand &&
+          demandRequiresPurchaseReview(demand) &&
+          getEffectiveRoutePurchase(route.id, demand).length === 0,
+      );
+    });
+  }
+
   function formatGeneralPurchasePlan(productId: string): string {
+    if (generalPurchaseNeedsDefinition(productId)) {
+      return "A definir";
+    }
+
     const plans = getGeneralPurchasePlans(productId);
 
     return plans.length > 0
@@ -2416,7 +2475,7 @@ function App() {
       const purchaseText =
         scope.type === "all"
           ? formatGeneralPurchasePlan(demand.produtoId)
-          : formatPurchasePlan(getPurchasePlan(scope.routeId, demand.produtoId));
+          : formatRoutePurchasePlan(scope.routeId, demand);
       const productLines = doc.splitTextToSize(demand.produtoNome, productWidth - 8);
       const demandLines = doc.splitTextToSize(demandText, demandWidth - 8);
       const purchaseLines = doc.splitTextToSize(purchaseText, purchaseWidth - 8);
@@ -3302,97 +3361,110 @@ function App() {
             <span className="soft-badge">Separação por rota</span>
           </div>
           <div className="route-pdf-grid">
-            {routePurchaseSummaries.map(({ route, pedidos, clientes, itens, demands }) => (
-              <details className="route-purchase-panel" key={route.id}>
-                <summary>
-                  <div>
-                    <strong>{route.nome}</strong>
-                    <span>
-                      {pedidos} pedidos - {clientes} clientes - {itens} itens
-                    </span>
-                  </div>
-                  <span className="soft-badge">{demands.length} produtos</span>
-                </summary>
+            {routePurchaseSummaries.map(({ route, pedidos, clientes, itens, demands }) => {
+              const reviewDemands = demands.filter(demandRequiresPurchaseReview);
 
-                <div className="route-purchase-body">
-                  {demands.length > 0 ? (
-                    <div className="route-purchase-list">
-                      {demands.map((demand) => {
-                        const plan = getPurchasePlan(route.id, demand.produtoId);
-                        const product = productById.get(demand.produtoId);
-
-                        return (
-                          <article className="route-purchase-row" key={demand.produtoId}>
-                            <div className="route-purchase-product">
-                              <strong>{demand.produtoNome}</strong>
-                              <span>Demanda: {formatProductDemand(demand)}</span>
-                            </div>
-                            <label>
-                              <span>Comprar</span>
-                              <input
-                                inputMode="decimal"
-                                value={plan.quantidade}
-                                onChange={(event) =>
-                                  updatePurchasePlan(route.id, demand.produtoId, {
-                                    quantidade: event.target.value,
-                                  })
-                                }
-                                placeholder="A definir"
-                              />
-                            </label>
-                            <label>
-                              <span>Unidade</span>
-                              <select
-                                value={plan.unidade}
-                                onChange={(event) =>
-                                  updatePurchasePlan(route.id, demand.produtoId, {
-                                    unidade: event.target.value as Unit,
-                                  })
-                                }
-                              >
-                                {Array.from(
-                                  new Set([
-                                    product ? getProductPurchaseUnit(product) : "caixa",
-                                    ...(product ? getProductOrderUnits(product) : []),
-                                  ]),
-                                ).map((unit) => (
-                                  <option value={unit} key={unit}>
-                                    {unit}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          </article>
-                        );
-                      })}
+              return (
+                <details className="route-purchase-panel" key={route.id}>
+                  <summary>
+                    <div>
+                      <strong>{route.nome}</strong>
+                      <span>
+                        {pedidos} pedidos - {clientes} clientes - {itens} itens
+                      </span>
                     </div>
-                  ) : (
-                    <p className="form-alert info-alert">Nenhum pedido nesta rota.</p>
-                  )}
+                    <span className="soft-badge">
+                      {reviewDemands.length} {reviewDemands.length === 1 ? "revisão" : "revisões"}
+                    </span>
+                  </summary>
 
-                  <div className="route-pdf-actions">
-                    <button
-                      className="secondary-button compact"
-                      type="button"
-                      disabled={itens === 0}
-                      onClick={() => exportPdf("download", { type: "route", routeId: route.id })}
-                    >
-                      <Download size={16} aria-hidden="true" />
-                      Compra
-                    </button>
-                    <button
-                      className="secondary-button compact"
-                      type="button"
-                      disabled={itens === 0}
-                      onClick={() => exportDeliveryPdf(route.id)}
-                    >
-                      <FileText size={16} aria-hidden="true" />
-                      Entrega
-                    </button>
+                  <div className="route-purchase-body">
+                    {reviewDemands.length > 0 ? (
+                      <>
+                        <p className="route-purchase-note">
+                          Revise somente os produtos cuja demanda precisa ser convertida para a unidade de compra.
+                        </p>
+                        <div className="route-purchase-list">
+                          {reviewDemands.map((demand) => {
+                            const plan = getPurchasePlan(route.id, demand.produtoId);
+                            const product = productById.get(demand.produtoId);
+
+                            return (
+                              <article className="route-purchase-row" key={demand.produtoId}>
+                                <div className="route-purchase-product">
+                                  <strong>{demand.produtoNome}</strong>
+                                  <span>Demanda: {formatProductDemand(demand)}</span>
+                                </div>
+                                <label>
+                                  <span>Comprar</span>
+                                  <input
+                                    inputMode="decimal"
+                                    value={plan.quantidade}
+                                    onChange={(event) =>
+                                      updatePurchasePlan(route.id, demand.produtoId, {
+                                        quantidade: event.target.value,
+                                      })
+                                    }
+                                    placeholder="A definir"
+                                  />
+                                </label>
+                                <label>
+                                  <span>Unidade</span>
+                                  <select
+                                    value={plan.unidade}
+                                    onChange={(event) =>
+                                      updatePurchasePlan(route.id, demand.produtoId, {
+                                        unidade: event.target.value as Unit,
+                                      })
+                                    }
+                                  >
+                                    {Array.from(
+                                      new Set([
+                                        product ? getProductPurchaseUnit(product) : "caixa",
+                                        ...(product ? getProductOrderUnits(product) : []),
+                                      ]),
+                                    ).map((unit) => (
+                                      <option value={unit} key={unit}>
+                                        {unit}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              </article>
+                            );
+                          })}
+                        </div>
+                      </>
+                    ) : (
+                      <p className="form-alert info-alert">
+                        Compra direta: todas as quantidades já estão na unidade correta.
+                      </p>
+                    )}
+
+                    <div className="route-pdf-actions">
+                      <button
+                        className="secondary-button compact"
+                        type="button"
+                        disabled={itens === 0}
+                        onClick={() => exportPdf("download", { type: "route", routeId: route.id })}
+                      >
+                        <Download size={16} aria-hidden="true" />
+                        Compra
+                      </button>
+                      <button
+                        className="secondary-button compact"
+                        type="button"
+                        disabled={itens === 0}
+                        onClick={() => exportDeliveryPdf(route.id)}
+                      >
+                        <FileText size={16} aria-hidden="true" />
+                        Entrega
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </details>
-            ))}
+                </details>
+              );
+            })}
           </div>
         </section>
       </div>
@@ -3774,7 +3846,7 @@ function App() {
           {catalogMessage ? <p className="form-alert info-alert">{catalogMessage}</p> : null}
         </section>
 
-        <section className="form-surface">
+        <section className="form-surface product-form-section" ref={productFormSectionRef}>
           <div className="section-heading">
             <h2>{editingProductId ? "Editar produto" : "Novo produto"}</h2>
             {editingProductId ? (
@@ -3788,6 +3860,7 @@ function App() {
             <label>
               <span>Produto</span>
               <input
+                ref={productNameInputRef}
                 value={productForm.nome}
                 onChange={(event) =>
                   setProductForm((current) => ({ ...current, nome: event.target.value }))
